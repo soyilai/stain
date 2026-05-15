@@ -6,10 +6,46 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(yoga REQUIRED)
-find_package(tl-expected REQUIRED)
+# Fetch missing dependencies from GitHub when not found on the system.
+option(STAIN_FETCH_DEPS "Fetch missing dependencies from GitHub" ON)
 
-add_library(stain STATIC
+if(STAIN_FETCH_DEPS)
+    include(FetchContent)
+
+    find_package(yoga QUIET)
+    if(NOT yoga_FOUND)
+        message(STATUS "yoga not found on system – fetching from GitHub")
+        FetchContent_Declare(yoga
+            GIT_REPOSITORY https://github.com/facebook/yoga.git
+            GIT_TAG        aa9c6fd14911f6a86bf6085510c06ab8c68a2db1
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_GetProperties(yoga)
+        if(NOT yoga_POPULATED)
+            FetchContent_Populate(yoga)
+            add_subdirectory(${yoga_SOURCE_DIR}/yoga ${yoga_BINARY_DIR})
+        endif()
+        if(NOT TARGET yoga::yogacore)
+            add_library(yoga::yogacore ALIAS yogacore)
+        endif()
+    endif()
+
+    find_package(tl-expected QUIET)
+    if(NOT tl-expected_FOUND)
+        message(STATUS "tl-expected not found on system – fetching from GitHub")
+        FetchContent_Declare(tl-expected
+            GIT_REPOSITORY https://github.com/TartanLlama/expected.git
+            GIT_TAG        v1.3.1
+            GIT_SHALLOW    TRUE
+        )
+        FetchContent_MakeAvailable(tl-expected)
+    endif()
+else()
+    find_package(yoga REQUIRED)
+    find_package(tl-expected REQUIRED)
+endif()
+
+add_library(stain
     src/color.cpp
     src/keybind.cpp
     src/buffer.cpp
@@ -37,6 +73,8 @@ include(GNUInstallDirs)
 install(TARGETS stain
     EXPORT stainTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 install(DIRECTORY include/stain
