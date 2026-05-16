@@ -769,6 +769,7 @@ namespace stain {
         if(!_focused)
             return;
         _focused = false;
+        _ctx->cursor(0, 0, false);
         if(_key_conn_id) {
             _ctx->off_key(_key_conn_id);
             _key_conn_id = 0;
