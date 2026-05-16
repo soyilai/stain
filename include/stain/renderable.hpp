@@ -110,7 +110,7 @@ namespace stain {
         Dimension pos_top{Auto{}}, pos_right{Auto{}};
         Dimension pos_bottom{Auto{}}, pos_left{Auto{}};
 
-        Overflow overflow{Overflow::Visible};
+        Overflow overflow{Overflow::Hidden};
 
         Display display{Display::Flex};
 
