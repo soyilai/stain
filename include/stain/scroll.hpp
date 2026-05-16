@@ -73,6 +73,7 @@ namespace stain {
 
         protected:
         void draw(OptimizedBuffer& buf, double delta) override;
+        void update_from_layout() override;
         void on_resize(int w, int h) override;
         void process_mouse_event(MouseEvent& event) override;
         bool handle_key_press(KeyEvent& key) override;

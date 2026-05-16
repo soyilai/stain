@@ -235,4 +235,44 @@ namespace stain {
         _scroll_left = std::clamp(_scroll_left, 0, max_x);
     }
 
+    void ScrollBox::update_from_layout() {
+        Renderable::update_from_layout();
+        if(!_scroll_opts.sticky_scroll || !_scroll_opts.sticky_edge)
+            return;
+        bool changed = false;
+        switch(*_scroll_opts.sticky_edge) {
+            case StickyEdge::Bottom: {
+                int max_y = std::max(0, content_height() - _viewport->layout_h());
+                if(_scroll_top != max_y) {
+                    _scroll_top = max_y;
+                    changed = true;
+                }
+                break;
+            }
+            case StickyEdge::Top:
+                if(_scroll_top != 0) {
+                    _scroll_top = 0;
+                    changed = true;
+                }
+                break;
+            case StickyEdge::Right: {
+                int max_x = std::max(0, content_width() - _viewport->layout_w());
+                if(_scroll_left != max_x) {
+                    _scroll_left = max_x;
+                    changed = true;
+                }
+                break;
+            }
+            case StickyEdge::Left:
+                if(_scroll_left != 0) {
+                    _scroll_left = 0;
+                    changed = true;
+                }
+                break;
+        }
+        if(changed) {
+            _content->translate(-_scroll_left, -_scroll_top);
+        }
+    }
+
 } // namespace stain
