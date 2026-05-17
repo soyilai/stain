@@ -17,7 +17,7 @@ if(STAIN_FETCH_DEPS)
         message(STATUS "yoga not found on system – fetching from GitHub")
         FetchContent_Declare(yoga
             GIT_REPOSITORY https://github.com/facebook/yoga.git
-            GIT_TAG        aa9c6fd14911f6a86bf6085510c06ab8c68a2db1
+            GIT_TAG        v3.2.1
             GIT_SHALLOW    TRUE
         )
         FetchContent_GetProperties(yoga)
