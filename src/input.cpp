@@ -25,6 +25,7 @@ namespace stain {
         {"ctrl+y", "redo"},
         {"return", "new-line"},
         {"tab", "insert-tab"},
+        {"ctrl+shift+c", "copy"},
     };
 
     EditBuffer::EditBuffer()
@@ -412,6 +413,7 @@ namespace stain {
             focused() ? _textarea_opts.focus_style : _textarea_opts.style;
         RGBA tc = sty.text;
         RGBA bc = sty.bg;
+        RGBA sel_bg{0, 0.4f, 0.8f, 1};
         if(!bc.is_transparent())
             buf.fill_rect(sx, sy, w, h, bc);
         std::string text = _edit_buffer.plain_text();
@@ -427,6 +429,10 @@ namespace stain {
         }
         adjust_h_scroll();
         adjust_v_scroll();
+        auto sel = _edit_buffer.selection();
+        int sel_s = std::min(sel.first, sel.second);
+        int sel_e = std::max(sel.first, sel.second);
+        bool has_sel = _edit_buffer.has_selection();
         int cx = 0, cy = 0, cursorpos = _edit_buffer.cursor_offset();
         int cdx = -1, cdy = -1;
         std::size_t pos = 0;
@@ -458,17 +464,21 @@ namespace stain {
                     int cw = char_display_width(cp);
                     if(cw == 0)
                         continue;
+                    bool selected = has_sel && byte_pos >= sel_s &&
+                                    byte_pos < sel_e;
                     buf.set_cell(
                         draw_x,
                         sy + cy - _v_scroll,
-                        Cell{cp, tc, bc, Attr::None}
+                        Cell{cp, tc, selected ? sel_bg : bc, Attr::None}
                     );
                     cx++;
                     if(cw == 2 && draw_x + 1 < sx + w) {
+                        bool wide_selected =
+                            has_sel && byte_pos >= sel_s && byte_pos < sel_e;
                         buf.set_cell(
                             draw_x + 1,
                             sy + cy - _v_scroll,
-                            Cell{U'\0', tc, bc, Attr::None}
+                            Cell{U'\0', tc, wide_selected ? sel_bg : bc, Attr::None}
                         );
                         cx++;
                     }
@@ -510,6 +520,93 @@ namespace stain {
             _ctx->cursor(cdx, cdy, true);
             _ctx->cursor_style({.style = CursorStyle::Line, .blinking = true});
         }
+    }
+
+    int Textarea::byte_offset_at(int cell_x, int cell_y) const {
+        int sx = screen_x(), sy = screen_y(), w = layout_w(), h = layout_h();
+        if(cell_x < sx || cell_x >= sx + w || cell_y < sy ||
+           cell_y >= sy + h)
+            return -1;
+        std::string text = _edit_buffer.plain_text();
+        int cx = 0, cy = 0;
+        std::size_t pos = 0;
+        while(pos < text.size()) {
+            int byte_pos = static_cast<int>(pos);
+            char32_t cp = decode_utf8(text, pos);
+            if(cp == U'\0')
+                break;
+            if(cp == U'\n') {
+                if(cell_y == sy + cy - _v_scroll) {
+                    return byte_pos;
+                }
+                cx = 0;
+                cy++;
+                continue;
+            }
+            if(cy >= _v_scroll + h)
+                break;
+            int cw = char_display_width(cp);
+            if(cw == 0)
+                continue;
+            if(cy >= _v_scroll) {
+                if(cx >= _h_scroll) {
+                    int draw_x = sx + cx - _h_scroll;
+                    if(draw_x >= sx + w) {
+                        cx += cw;
+                        continue;
+                    }
+                    if(draw_x == cell_x &&
+                       sy + cy - _v_scroll == cell_y) {
+                        return byte_pos;
+                    }
+                    cx += cw;
+                } else {
+                    cx += cw;
+                }
+            } else {
+                cx += cw;
+            }
+        }
+        return _edit_buffer.length();
+    }
+
+    void Textarea::process_mouse_event(MouseEvent& event) {
+        if(event.type == MouseEventType::Down &&
+           event.button == MouseButton::Left) {
+            if(_focusable)
+                focus();
+            int offset = byte_offset_at(event.x, event.y);
+            if(offset >= 0) {
+                _edit_buffer.move_cursor_to(offset);
+                _edit_buffer.select(offset, offset);
+                _mouse_selecting = true;
+                request_render();
+                event.stop_propagation();
+            }
+            return;
+        }
+        if(event.type == MouseEventType::Drag &&
+           event.button == MouseButton::Left && _mouse_selecting) {
+            int offset = byte_offset_at(event.x, event.y);
+            if(offset >= 0) {
+                int anchor = _edit_buffer.selection().first;
+                _edit_buffer.select(anchor, offset);
+                request_render();
+                event.stop_propagation();
+            }
+            return;
+        }
+        if(event.type == MouseEventType::Up &&
+           event.button == MouseButton::Left && _mouse_selecting) {
+            _mouse_selecting = false;
+            if(_edit_buffer.has_selection() && _ctx) {
+                _ctx->clipboard_copy(_edit_buffer.selected_text());
+            }
+            request_render();
+            event.stop_propagation();
+            return;
+        }
+        Renderable::process_mouse_event(event);
     }
 
     void Textarea::adjust_h_scroll() {
@@ -583,7 +680,13 @@ namespace stain {
                 return true;
             } else if(action == "insert-tab")
                 _edit_buffer.insert_at_cursor("  ");
-            else {
+            else if(action == "copy") {
+                if(_edit_buffer.has_selection() && _ctx) {
+                    _ctx->clipboard_copy(_edit_buffer.selected_text());
+                }
+                request_render();
+                return true;
+            } else {
                 return false;
             }
             request_render();

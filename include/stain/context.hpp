@@ -88,6 +88,9 @@ namespace stain {
         virtual std::size_t on_key(std::function<bool(KeyEvent&)> handler) = 0;
         virtual void off_key(std::size_t id) = 0;
 
+        // Copy text to system clipboard via OSC52.
+        virtual void clipboard_copy(std::string_view text) = 0;
+
         // Global paste handler. Returns a connection ID.
         virtual std::size_t
         on_paste(std::function<void(PasteEvent&)> handler) = 0;

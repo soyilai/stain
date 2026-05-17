@@ -20,6 +20,7 @@ namespace stain {
         bool has_mouse_sgr{false};
         bool has_bracketed_paste{false};
         bool has_osc_hyperlinks{false};
+        bool has_osc52{false};
     };
 
     // RAII guard: saves terminal state on construction, restores on
@@ -55,6 +56,9 @@ namespace stain {
         void reset_attr();
         void show_cursor(bool visible);
         void cursor_style(CursorOptions opts);
+
+        // Copy text to system clipboard via OSC52.
+        void clipboard_copy(std::string_view text);
 
         // Update terminal dimensions (call on SIGWINCH).
         void update_size();

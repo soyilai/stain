@@ -678,6 +678,12 @@ namespace stain {
         }
     }
 
+    void Renderer::clipboard_copy(std::string_view text) {
+        if(_impl->terminal) {
+            _impl->terminal->clipboard_copy(text);
+        }
+    }
+
     void Renderer::destroy() {
         _impl->running = false;
     }

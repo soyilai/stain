@@ -95,6 +95,7 @@ namespace stain {
         void clear_selection() override;
         void start_selection(Renderable* r, int x, int y) override;
         void update_selection(Renderable* r, int x, int y) override;
+        void clipboard_copy(std::string_view text) override;
         std::size_t on_key(std::function<bool(KeyEvent&)> handler) override;
         void off_key(std::size_t id) override;
         std::size_t on_paste(std::function<void(PasteEvent&)> handler) override;

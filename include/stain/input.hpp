@@ -155,16 +155,19 @@ namespace stain {
         void draw(OptimizedBuffer& buf, double delta) override;
         bool handle_key_press(KeyEvent& key) override;
         void handle_paste(PasteEvent& event) override;
+        void process_mouse_event(MouseEvent& event) override;
         virtual bool new_line();
 
         private:
         void adjust_h_scroll();
         void adjust_v_scroll();
+        [[nodiscard]] int byte_offset_at(int cell_x, int cell_y) const;
         [[nodiscard]] int cursor_line() const;
         TextareaOptions _textarea_opts;
         EditBuffer _edit_buffer;
         int _h_scroll{0};
         int _v_scroll{0};
+        bool _mouse_selecting{false};
         std::unordered_map<std::string, std::string> _binding_map;
     };
 
