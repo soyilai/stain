@@ -3,9 +3,11 @@
 #include "stain/buffer.hpp"
 #include "stain/color.hpp"
 #include "stain/event.hpp"
+#include "stain/timeline.hpp"
 
 #include <cstddef>
 #include <functional>
+#include <memory>
 #include <optional>
 
 namespace stain {
@@ -76,6 +78,10 @@ namespace stain {
         // Register/unregister for per-frame lifecycle updates.
         virtual void register_lifecycle(Renderable* r) = 0;
         virtual void unregister_lifecycle(Renderable* r) = 0;
+
+        // Register/unregister a timeline-driven animation.
+        virtual void add_timeline(std::shared_ptr<Timeline> tl) = 0;
+        virtual void remove_timeline(Timeline* tl) = 0;
 
         // Text selection management.
         [[nodiscard]] virtual std::optional<Selection>

@@ -2,6 +2,7 @@
 #include <stain/framebuffer.hpp>
 #include <stain/renderer.hpp>
 #include <stain/text.hpp>
+#include <stain/timeline.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -89,20 +90,16 @@ class ColorFill : public Renderable {
         , _panel_bg(panel_bg) {
         flex_grow(1.f);
         live(true);
-    }
 
-    void on_lifecycle_pass(double dt) override {
-        _hue = std::fmod(_hue + float(dt) * 30.0f, 360.0f);
-        RGBA color = stain::from_hue(_hue);
-
-        float t = std::sin(float(_t) * 1.2f) * 0.4f + 0.6f;
-        _color = {
-            color.r * t + _panel_bg.r * (1.0f - t),
-            color.g * t + _panel_bg.g * (1.0f - t),
-            color.b * t + _panel_bg.b * (1.0f - t),
-            1.0f,
-        };
-        _t += dt;
+        auto tl = std::make_shared<Timeline>();
+        tl->duration(12000).loop(true);
+        tl->animate({{"hue", 0.0f}}, {{"hue", {360.0f, easing::linear}}}, 12000)
+            .on_update([this](Animation& a) {
+                _hue = a.get("hue");
+                update_color();
+                request_render();
+            });
+        _ctx->add_timeline(tl);
     }
 
     protected:
@@ -111,6 +108,18 @@ class ColorFill : public Renderable {
     }
 
     private:
+    void update_color() {
+        RGBA color = stain::from_hue(_hue);
+        float t = std::sin(float(_t) * 1.2f) * 0.4f + 0.6f;
+        _color = {
+            color.r * t + _panel_bg.r * (1.0f - t),
+            color.g * t + _panel_bg.g * (1.0f - t),
+            color.b * t + _panel_bg.b * (1.0f - t),
+            1.0f,
+        };
+        _t += 0.016f;
+    }
+
     RGBA _panel_bg;
     float _hue{0};
     float _t{0};
@@ -334,7 +343,7 @@ int main() {
             TextBuilder{}.fg(
                 RGBA::from_hex("#666666"),
                 " q / Ctrl+C: quit  |  "
-                "on_lifecycle_pass(dt) + translate() + opacity() + on_frame()"
+                "Timeline + on_lifecycle_pass(dt) + translate() + opacity() + on_frame()"
             )
         );
         outer->add(f);

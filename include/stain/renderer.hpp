@@ -91,6 +91,8 @@ namespace stain {
         void clear_hit_grid() override;
         void register_lifecycle(Renderable* r) override;
         void unregister_lifecycle(Renderable* r) override;
+        void add_timeline(std::shared_ptr<Timeline> tl) override;
+        void remove_timeline(Timeline* tl) override;
         std::optional<Selection> get_selection() const override;
         void clear_selection() override;
         void start_selection(Renderable* r, int x, int y) override;

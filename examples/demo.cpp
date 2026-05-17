@@ -16,7 +16,7 @@
 
 using namespace stain;
 
-// Custom animated counter  /  demonstrates on_lifecycle_pass + live
+// Custom animated counter  /  demonstrates Timeline-driven animation
 class AnimatedCounter : public Renderable {
     public:
     AnimatedCounter(RenderContext* ctx, RGBA color)
@@ -25,12 +25,16 @@ class AnimatedCounter : public Renderable {
         height(px(1));
         live(true);
         update_text();
-    }
 
-    void on_lifecycle_pass(double) override {
-        _counter = (_counter + 1) % 1000;
-        update_text();
-        request_render();
+        auto tl = std::make_shared<Timeline>();
+        tl->duration(33333).loop(true);
+        tl->animate({{"counter", 0.0f}}, {{"counter", {999.0f, easing::linear}}}, 33333)
+            .on_update([this](Animation& a) {
+                _counter = static_cast<int>(a.get("counter"));
+                update_text();
+                request_render();
+            });
+        _ctx->add_timeline(tl);
     }
 
     protected:
@@ -40,7 +44,7 @@ class AnimatedCounter : public Renderable {
 
     private:
     void update_text() {
-        _text = " lifecycle: " + std::to_string(_counter);
+        _text = " timeline: " + std::to_string(_counter);
     }
     int _counter{0};
     RGBA _color;

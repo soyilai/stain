@@ -48,6 +48,7 @@ namespace stain {
         std::vector<ClipRect> hit_scissor_stack;
 
         std::vector<Renderable*> lifecycle_renderables;
+        std::vector<std::shared_ptr<Timeline>> timelines;
 
         Signal<KeyEvent&> key_signal;
         Signal<PasteEvent&> paste_signal;
@@ -184,6 +185,22 @@ namespace stain {
         v.erase(std::remove(v.begin(), v.end(), r), v.end());
     }
 
+    void Renderer::add_timeline(std::shared_ptr<Timeline> tl) {
+        _impl->timelines.push_back(std::move(tl));
+    }
+
+    void Renderer::remove_timeline(Timeline* tl) {
+        auto& v = _impl->timelines;
+        v.erase(
+            std::remove_if(
+                v.begin(),
+                v.end(),
+                [tl](const auto& ptr) { return ptr.get() == tl; }
+            ),
+            v.end()
+        );
+    }
+
     std::optional<Selection> Renderer::get_selection() const {
         return _impl->selection;
     }
@@ -299,25 +316,28 @@ namespace stain {
         auto now = std::chrono::steady_clock::now();
         double delta =
             std::chrono::duration<double>(now - _impl->last_frame_time).count();
+        if(delta > 0.1)
+            delta = 0.016;
 
-        // 1. Lifecycle passes.
+        // 1. Drive active timelines.
+        for(auto& tl : _impl->timelines) {
+            tl->update(delta);
+        }
+
+        // 2. Lifecycle passes.
         run_lifecycle_passes(delta);
 
-        // 2. Layout.
+        // 3. Layout.
         update_layout();
 
-        // 3. Render.
+        // 4. Render.
         render_frame(delta);
 
-        // 4. Diff and flush.
+        // 5. Diff and flush.
         diff_and_flush();
     }
 
     void Renderer::run_lifecycle_passes(double delta) {
-        // Clamp large delta to prevent physics/animations from jumping
-        // after a stalled render (e.g. debugger breakpoint, terminal lag).
-        if(delta > 0.1)
-            delta = 0.016;
         for(auto* r : _impl->lifecycle_renderables) {
             r->on_lifecycle_pass(delta);
         }

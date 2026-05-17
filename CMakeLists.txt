@@ -59,6 +59,7 @@ add_library(stain
     src/input.cpp
     src/select.cpp
     src/framebuffer.cpp
+    src/timeline.cpp
 )
 
 target_include_directories(stain PUBLIC
