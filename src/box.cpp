@@ -4,62 +4,22 @@
 
 namespace stain {
 
-    static void set_yoga_border(
-        YGNodeRef node,
-        YGEdge edge,
-        bool active,
-        bool pad_is_auto
-    ) {
-        if(active && pad_is_auto)
-            YGNodeStyleSetBorder(node, edge, 1.f);
-        else
-            YGNodeStyleSetBorder(node, edge, 0.f);
-    }
-
-    static bool is_pad_auto(const Edges& pad, YGEdge edge) {
-        switch(edge) {
-        case YGEdgeTop:
-            return std::holds_alternative<Auto>(pad.top);
-        case YGEdgeBottom:
-            return std::holds_alternative<Auto>(pad.bottom);
-        case YGEdgeLeft:
-            return std::holds_alternative<Auto>(pad.left);
-        case YGEdgeRight:
-            return std::holds_alternative<Auto>(pad.right);
-        default:
-            return true;
-        }
+    static void set_yoga_border(YGNodeRef node, YGEdge edge, bool active) {
+        YGNodeStyleSetBorder(node, edge, active ? 1.f : 0.f);
     }
 
     void Box::sync_border_to_yoga() {
         const auto& sty = _box_opts.style;
-        const auto& pad = _opts.padding;
         bool has_border = sty.border_style != BorderStyle::None;
 
-        set_yoga_border(
-            yoga_node(),
-            YGEdgeTop,
-            has_border && sty.border_sides.top,
-            is_pad_auto(pad, YGEdgeTop)
-        );
-        set_yoga_border(
-            yoga_node(),
-            YGEdgeBottom,
-            has_border && sty.border_sides.bottom,
-            is_pad_auto(pad, YGEdgeBottom)
-        );
-        set_yoga_border(
-            yoga_node(),
-            YGEdgeLeft,
-            has_border && sty.border_sides.left,
-            is_pad_auto(pad, YGEdgeLeft)
-        );
-        set_yoga_border(
-            yoga_node(),
-            YGEdgeRight,
-            has_border && sty.border_sides.right,
-            is_pad_auto(pad, YGEdgeRight)
-        );
+        set_yoga_border(yoga_node(), YGEdgeTop,
+                        has_border && sty.border_sides.top);
+        set_yoga_border(yoga_node(), YGEdgeBottom,
+                        has_border && sty.border_sides.bottom);
+        set_yoga_border(yoga_node(), YGEdgeLeft,
+                        has_border && sty.border_sides.left);
+        set_yoga_border(yoga_node(), YGEdgeRight,
+                        has_border && sty.border_sides.right);
     }
 
     Box::Box(RenderContext* ctx, BoxOptions opts)

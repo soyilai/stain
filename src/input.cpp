@@ -223,11 +223,11 @@ namespace stain {
             prev_line_start--;
         int col = cursor_column();
         int target = prev_line_start;
-        for(int i = 0; i < col; i++) {
-            if(target >= prev_line_end)
-                break;
-            std::size_t pos = static_cast<std::size_t>(target);
-            decode_utf8(t, pos);
+        int display_col = 0;
+        std::size_t pos = static_cast<std::size_t>(target);
+        while(pos < static_cast<std::size_t>(prev_line_end) && display_col < col) {
+            char32_t cp = decode_utf8(t, pos);
+            display_col += char_display_width(cp);
             target = static_cast<int>(pos);
         }
         _cursor = target;
@@ -256,11 +256,11 @@ namespace stain {
             next_line_end++;
         int col = cursor_column();
         int target = next_line_start;
-        for(int i = 0; i < col; i++) {
-            if(target >= next_line_end)
-                break;
-            std::size_t pos = static_cast<std::size_t>(target);
-            decode_utf8(t, pos);
+        int display_col = 0;
+        std::size_t pos = static_cast<std::size_t>(target);
+        while(pos < static_cast<std::size_t>(next_line_end) && display_col < col) {
+            char32_t cp = decode_utf8(t, pos);
+            display_col += char_display_width(cp);
             target = static_cast<int>(pos);
         }
         _cursor = target;
@@ -275,8 +275,8 @@ namespace stain {
         int col = 0;
         std::size_t pos = static_cast<std::size_t>(line_start);
         while(pos < static_cast<std::size_t>(_cursor)) {
-            decode_utf8(t, pos);
-            col++;
+            char32_t cp = decode_utf8(t, pos);
+            col += char_display_width(cp);
         }
         return col;
     }

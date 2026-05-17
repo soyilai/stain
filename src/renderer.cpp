@@ -584,6 +584,65 @@ namespace stain {
                     event.name = "unknown";
                 break;
             }
+            case 'u': {
+                // Kitty keyboard protocol: ESC[code;modsu
+                std::string_view inner(sv.substr(2, len - 3));
+                auto semi = inner.find(';');
+                int code = 0, mod_raw = 1;
+                auto parse_num = [&](std::string_view s) -> int {
+                    int v = 0;
+                    for(char ch : s) {
+                        if(ch < '0' || ch > '9') return -1;
+                        v = v * 10 + (ch - '0');
+                    }
+                    return v;
+                };
+                if(semi != std::string_view::npos) {
+                    code = parse_num(inner.substr(0, semi));
+                    mod_raw = parse_num(inner.substr(semi + 1));
+                } else {
+                    code = parse_num(inner);
+                }
+                if(code < 0) { event.name = "unknown"; break; }
+
+                if(mod_raw >= 2 && mod_raw <= 8) {
+                    int bits = mod_raw - 1;
+                    event.shift = (bits & 1) != 0;
+                    event.meta = (bits & 2) != 0;
+                    event.ctrl = (bits & 4) != 0;
+                }
+
+                if(code >= 0xE000 && code <= 0xE00B) {
+                    event.name = "f" + std::to_string(code - 0xE000 + 1);
+                } else if(code == 0xE010)      event.name = "left";
+                else if(code == 0xE011)      event.name = "right";
+                else if(code == 0xE012)      event.name = "up";
+                else if(code == 0xE013)      event.name = "down";
+                else if(code == 0xE014)      event.name = "home";
+                else if(code == 0xE015)      event.name = "end";
+                else if(code == 0xE016)      event.name = "insert";
+                else if(code == 0xE017)      event.name = "delete";
+                else if(code == 0xE018)      event.name = "pageup";
+                else if(code == 0xE019)      event.name = "pagedown";
+                else if(code == 27)          event.name = "escape";
+                else if(code == 9)           event.name = "tab";
+                else if(code == 13)          event.name = "return";
+                else if(code == 127)         event.name = "backspace";
+                else if(code >= 32 && code <= 126) {
+                    event.name = std::string(1, static_cast<char>(code));
+                    event.sequence = event.name;
+                } else if(code == 8)         event.name = "backspace";
+                else if(code == 10)          event.name = "return";
+                else {
+                    char utf8_buf[5] = {};
+                    int n = encode_utf8(static_cast<char32_t>(code), utf8_buf);
+                    utf8_buf[n] = '\0';
+                    event.name = std::string(utf8_buf);
+                    event.sequence = event.name;
+                }
+                // Skip the generic ANSI modifier check below for 'u' sequences.
+                goto skip_ansi_modifier;
+            }
             default:
                 event.name = "unknown";
                 break;
@@ -592,6 +651,7 @@ namespace stain {
             // Check for modifier parameters (CSI 1;2A = shift+up, etc.)
             // ANSI modifiers are 1-indexed: raw=2 means modifier bits=1
             if(len >= 5 && data[2] == '1' && data[3] == ';') {
+
                 int mod = data[4] - '0';
                 if(mod >= 2 && mod <= 8) {
                     int bits = mod - 1;
@@ -600,6 +660,7 @@ namespace stain {
                     event.ctrl = (bits & 4) != 0;
                 }
             }
+            skip_ansi_modifier:;
         } else if(len == 2 && data[0] == '\033') {
             // Alt + key.
             event.name = std::string(1, data[1]);
