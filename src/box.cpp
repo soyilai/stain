@@ -146,8 +146,15 @@ namespace stain {
                         static_cast<std::size_t>(max_title_len)
                     );
 
+                int title_x = sx + 2;
+                if(_box_opts.title_align == BoxOptions::TitleAlign::Center)
+                    title_x =
+                        sx + (w - static_cast<int>(title_view.size())) / 2;
+                else if(_box_opts.title_align == BoxOptions::TitleAlign::Right)
+                    title_x = sx + w - static_cast<int>(title_view.size()) - 2;
+
                 buf.draw_text(
-                    sx + 2,
+                    title_x,
                     sy + h - 1,
                     title_view,
                     bc,

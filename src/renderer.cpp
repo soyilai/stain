@@ -317,7 +317,7 @@ namespace stain {
         double delta =
             std::chrono::duration<double>(now - _impl->last_frame_time).count();
         if(delta > 0.1)
-            delta = 0.016;
+            delta = 1.0 / _impl->opts._target_fps;
 
         // 1. Drive active timelines.
         for(auto& tl : _impl->timelines) {
@@ -534,6 +534,7 @@ namespace stain {
         } else if(len >= 3 && data[0] == '\033' && data[1] == '[') {
             // CSI sequences.
             char final_char = data[len - 1];
+            bool skip_ansi_modifier = false;
             switch(final_char) {
             case 'A':
                 event.name = "up";
@@ -640,8 +641,9 @@ namespace stain {
                     event.name = std::string(utf8_buf);
                     event.sequence = event.name;
                 }
-                // Skip the generic ANSI modifier check below for 'u' sequences.
-                goto skip_ansi_modifier;
+                // Kitty 'u' sequences carry their own modifier info.
+                skip_ansi_modifier = true;
+                break;
             }
             default:
                 event.name = "unknown";
@@ -650,7 +652,7 @@ namespace stain {
 
             // Check for modifier parameters (CSI 1;2A = shift+up, etc.)
             // ANSI modifiers are 1-indexed: raw=2 means modifier bits=1
-            if(len >= 5 && data[2] == '1' && data[3] == ';') {
+            if(!skip_ansi_modifier && len >= 5 && data[2] == '1' && data[3] == ';') {
 
                 int mod = data[4] - '0';
                 if(mod >= 2 && mod <= 8) {
@@ -660,7 +662,6 @@ namespace stain {
                     event.ctrl = (bits & 4) != 0;
                 }
             }
-            skip_ansi_modifier:;
         } else if(len == 2 && data[0] == '\033') {
             // Alt + key.
             event.name = std::string(1, data[1]);

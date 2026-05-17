@@ -1,7 +1,12 @@
 #include "stain/text.hpp"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <shellapi.h>
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 namespace stain {
 
@@ -220,7 +225,7 @@ namespace stain {
                             );
                             cx++;
                             if(wcw == 2) {
-                                if(cx < sx + w)
+                                if(cx < w)
                                     buf.set_cell(
                                         sx + cx,
                                         sy + cy,
@@ -238,9 +243,7 @@ namespace stain {
                         );
                         cx++;
                     }
-                    if(is_nl)
-                        s = e + 1;
-                    else if(is_sp)
+                    if(is_sp)
                         s = e + 1;
                     else
                         s = chunk.text.size();
@@ -302,11 +305,12 @@ namespace stain {
                     cx++;
 
                     if(cw == 2) {
-                        buf.set_cell(
-                            sx + cx,
-                            sy + cy,
-                            Cell{U'\0', fg, bg, attr}
-                        );
+                        if(cx < w)
+                            buf.set_cell(
+                                sx + cx,
+                                sy + cy,
+                                Cell{U'\0', fg, bg, attr}
+                            );
                         cx++;
                     }
                 }
@@ -329,10 +333,16 @@ namespace stain {
                 if(event.x >= reg.x && event.x < reg.x + reg.w &&
                    event.y == reg.y) {
 #ifdef _WIN32
-                    std::string cmd = "start \"\" \"";
-                    cmd += reg.url;
-                    cmd += "\"";
-                    std::system(cmd.c_str());
+                    // ShellExecuteA avoids command injection from shell
+                    // metacharacters in the URL.
+                    ShellExecuteA(
+                        nullptr,
+                        "open",
+                        reg.url.c_str(),
+                        nullptr,
+                        nullptr,
+                        SW_SHOWNORMAL
+                    );
 #elif __APPLE__
                     pid_t pid = fork();
                     if(pid == 0) {

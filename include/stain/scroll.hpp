@@ -80,6 +80,7 @@ namespace stain {
 
         private:
         void clamp_scroll();
+        void apply_viewport_culling();
 
         std::shared_ptr<Box> _viewport;
         std::shared_ptr<Box> _content;

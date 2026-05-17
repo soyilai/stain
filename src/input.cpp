@@ -679,7 +679,9 @@ namespace stain {
                 request_render();
                 return true;
             } else if(action == "insert-tab")
-                _edit_buffer.insert_at_cursor("  ");
+                _edit_buffer.insert_at_cursor(
+                    std::string(static_cast<std::size_t>(_textarea_opts.tab_width), ' ')
+                );
             else if(action == "copy") {
                 if(_edit_buffer.has_selection() && _ctx) {
                     _ctx->clipboard_copy(_edit_buffer.selected_text());
@@ -714,6 +716,8 @@ namespace stain {
     }
     bool Textarea::new_line() {
         _edit_buffer.insert_at_cursor("\n");
+        if(_textarea_opts.on_submit)
+            _textarea_opts.on_submit(plain_text());
         return true;
     }
 
@@ -723,6 +727,11 @@ namespace stain {
         for(char c : event.text) {
             if(c != '\n' && c != '\r')
                 filtered += c;
+        }
+        if(_input_opts.max_length > 0) {
+            int remaining = _input_opts.max_length - edit_buffer().length();
+            if(static_cast<int>(filtered.size()) > remaining)
+                filtered.resize(std::max(0, remaining));
         }
         event.text = std::move(filtered);
         Textarea::handle_paste(event);
@@ -770,9 +779,17 @@ namespace stain {
 
     bool Input::handle_key_press(KeyEvent& key) {
         if(key.name == "return" && !key.ctrl) {
+            auto v = value();
             if(_input_opts.on_enter)
-                _input_opts.on_enter(value());
-            emit(events::InputEntered{value()});
+                _input_opts.on_enter(v);
+            if(_input_opts.on_submit)
+                _input_opts.on_submit(v);
+            emit(events::InputEntered{v});
+            return true;
+        }
+        if(_input_opts.max_length > 0 &&
+           edit_buffer().length() >= _input_opts.max_length &&
+           !key.ctrl && !key.meta && !key.sequence.empty()) {
             return true;
         }
         bool handled = Textarea::handle_key_press(key);

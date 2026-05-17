@@ -121,6 +121,7 @@ namespace stain {
         std::vector<KeyBinding> key_bindings{};
         KeyAliasMap key_aliases{};
         std::function<void(std::string_view)> on_submit;
+        int tab_width{2};
     };
 
     // Multi-line text input area with cursor, undo/redo, and selection.

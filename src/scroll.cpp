@@ -68,10 +68,7 @@ namespace stain {
     }
 
     BaseRenderable* ScrollBox::find(std::string_view id) const {
-        auto* found = Renderable::find(id);
-        if(found)
-            return found;
-        return _content->find(id);
+        return Renderable::find(id);
     }
 
     void ScrollBox::draw(OptimizedBuffer& buf, double /*delta*/) {
@@ -150,6 +147,9 @@ namespace stain {
 
     void ScrollBox::on_resize(int /*w*/, int /*h*/) {
         clamp_scroll();
+        if(_scroll_opts.viewport_culling) {
+            apply_viewport_culling();
+        }
         _content->translate(-_scroll_left, -_scroll_top);
     }
 
@@ -222,27 +222,56 @@ namespace stain {
 
     void ScrollBox::clamp_scroll() {
         int vp_h = _viewport->layout_h();
+        int vp_w = _viewport->layout_w();
         int by = static_cast<int>(
             YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeTop)
         );
         int bb = static_cast<int>(
             YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeBottom)
         );
+        int bl = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeLeft)
+        );
+        int br = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeRight)
+        );
         int inner_h = std::max(1, vp_h - by - bb);
+        int inner_w = std::max(1, vp_w - bl - br);
         int max_y = std::max(0, content_height() - inner_h);
-        int max_x = std::max(0, content_width() - _viewport->layout_w());
+        int max_x = std::max(0, content_width() - inner_w);
         _scroll_top = std::clamp(_scroll_top, 0, max_y);
         _scroll_left = std::clamp(_scroll_left, 0, max_x);
     }
 
     void ScrollBox::update_from_layout() {
         Renderable::update_from_layout();
+        if(_scroll_opts.viewport_culling) {
+            apply_viewport_culling();
+        }
         if(!_scroll_opts.sticky_scroll || !_scroll_opts.sticky_edge)
             return;
+
+        int vp_h = _viewport->layout_h();
+        int vp_w = _viewport->layout_w();
+        int by = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeTop)
+        );
+        int bb = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeBottom)
+        );
+        int bl = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeLeft)
+        );
+        int br = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeRight)
+        );
+        int inner_h = std::max(1, vp_h - by - bb);
+        int inner_w = std::max(1, vp_w - bl - br);
+
         bool changed = false;
         switch(*_scroll_opts.sticky_edge) {
             case StickyEdge::Bottom: {
-                int max_y = std::max(0, content_height() - _viewport->layout_h());
+                int max_y = std::max(0, content_height() - inner_h);
                 if(_scroll_top != max_y) {
                     _scroll_top = max_y;
                     changed = true;
@@ -256,7 +285,7 @@ namespace stain {
                 }
                 break;
             case StickyEdge::Right: {
-                int max_x = std::max(0, content_width() - _viewport->layout_w());
+                int max_x = std::max(0, content_width() - inner_w);
                 if(_scroll_left != max_x) {
                     _scroll_left = max_x;
                     changed = true;
@@ -272,6 +301,44 @@ namespace stain {
         }
         if(changed) {
             _content->translate(-_scroll_left, -_scroll_top);
+        }
+    }
+
+    void ScrollBox::apply_viewport_culling() {
+        int vp_x = _viewport->screen_x();
+        int vp_y = _viewport->screen_y();
+        int vp_h = _viewport->layout_h();
+        int vp_w = _viewport->layout_w();
+
+        int by = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeTop)
+        );
+        int bb = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeBottom)
+        );
+        int bl = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeLeft)
+        );
+        int br = static_cast<int>(
+            YGNodeLayoutGetBorder(_viewport->yoga_node(), YGEdgeRight)
+        );
+
+        int inner_x = vp_x + bl;
+        int inner_y = vp_y + by;
+        int inner_w = std::max(1, vp_w - bl - br);
+        int inner_h = std::max(1, vp_h - by - bb);
+
+        for(auto* child : _content->children()) {
+            auto* r = dynamic_cast<Renderable*>(child);
+            if(!r)
+                continue;
+            int cx = r->screen_x();
+            int cy = r->screen_y();
+            int cw = r->layout_w();
+            int ch = r->layout_h();
+            bool visible = (cx + cw > inner_x && cx < inner_x + inner_w &&
+                            cy + ch > inner_y && cy < inner_y + inner_h);
+            r->visible(visible);
         }
     }
 

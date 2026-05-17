@@ -823,7 +823,8 @@ namespace stain {
             _children_layout_order.begin() + idx,
             child
         );
-        _children_z_order.push_back(child.get());
+        if(dynamic_cast<Renderable*>(child.get()))
+            _children_z_order.push_back(child.get());
         _z_sort_dirty = true;
         _child_map[child->id()] = child.get();
         child->_parent = this;
@@ -876,13 +877,13 @@ namespace stain {
         }
 
         // Yoga removal.
-        auto* r = static_cast<Renderable*>(raw);
+        auto* r = dynamic_cast<Renderable*>(raw);
         if(r && r->_yoga_node) {
             YGNodeRemoveChild(_yoga_node, r->_yoga_node);
+            r->_renderable_parent = nullptr;
         }
 
         raw->_parent = nullptr;
-        static_cast<Renderable*>(raw)->_renderable_parent = nullptr;
         request_render();
         emit(events::Removed{std::string(id)});
     }
@@ -968,7 +969,8 @@ namespace stain {
 
         // Recurse into children.
         for(auto& child : _children_layout_order) {
-            static_cast<Renderable*>(child.get())->update_from_layout();
+            if(auto* r = dynamic_cast<Renderable*>(child.get()))
+                r->update_from_layout();
         }
 
         mark_clean();
@@ -1020,6 +1022,19 @@ namespace stain {
         // Subclass draw.
         draw(target, delta_time);
 
+        // Register in hit grid before children so that reverse dispatch
+        // gives priority to child renderables (children registered later
+        // come first in reverse iteration).
+        if(_ctx) {
+            _ctx->add_to_hit_grid(
+                screen_x(),
+                screen_y(),
+                _width,
+                _height,
+                _num
+            );
+        }
+
         // Z-sorted children.
         ensure_z_sorted();
         for(auto* child : _children_z_order) {
@@ -1039,17 +1054,6 @@ namespace stain {
         // render_after callback.
         if(_opts.render_after)
             _opts.render_after(buf, delta_time);
-
-        // Register in hit grid.
-        if(_ctx) {
-            _ctx->add_to_hit_grid(
-                screen_x(),
-                screen_y(),
-                _width,
-                _height,
-                _num
-            );
-        }
     }
 
     void Renderable::process_mouse_event(MouseEvent& event) {
@@ -1094,6 +1098,16 @@ namespace stain {
     void Renderable::ensure_z_sorted() {
         if(!_z_sort_dirty)
             return;
+        _children_z_order.erase(
+            std::remove_if(
+                _children_z_order.begin(),
+                _children_z_order.end(),
+                [](BaseRenderable* c) {
+                    return dynamic_cast<Renderable*>(c) == nullptr;
+                }
+            ),
+            _children_z_order.end()
+        );
         std::stable_sort(
             _children_z_order.begin(),
             _children_z_order.end(),
