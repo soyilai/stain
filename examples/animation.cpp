@@ -1,3 +1,4 @@
+#include <stain/ascii_font.hpp>
 #include <stain/box.hpp>
 #include <stain/framebuffer.hpp>
 #include <stain/renderer.hpp>
@@ -335,6 +336,31 @@ int main() {
         outer->add(row);
     }
 
+    // ASCII font banner row
+    {
+        auto row = box(*renderer);
+        row->flex_direction(FlexDirection::Row);
+        row->height(px(5));
+        row->column_gap(px(1));
+        row->margin(Edges{.top = px(1)});
+
+        auto tiny = ascii_font(*renderer);
+        tiny->font(AsciiFontType::Tiny);
+        tiny->text("STAIN");
+        tiny->fg(RGBA::from_hex("#FFDD44"));
+        tiny->flex_grow(1.f);
+        row->add(tiny);
+
+        auto block = ascii_font(*renderer);
+        block->font(AsciiFontType::Block);
+        block->text("STAIN");
+        block->fg(RGBA::from_hex("#88FF88"));
+        block->flex_grow(1.f);
+        row->add(block);
+
+        outer->add(row);
+    }
+
     {
         auto f = text(*renderer);
         f->height(px(1));
@@ -343,7 +369,7 @@ int main() {
             TextBuilder{}.fg(
                 RGBA::from_hex("#666666"),
                 " q / Ctrl+C: quit  |  "
-                "Timeline + on_lifecycle_pass(dt) + translate() + opacity() + on_frame()"
+                "Timeline + AsciiFont + on_lifecycle_pass + translate + opacity + on_frame"
             )
         );
         outer->add(f);

@@ -60,6 +60,7 @@ add_library(stain
     src/select.cpp
     src/framebuffer.cpp
     src/timeline.cpp
+    src/ascii_font.cpp
 )
 
 target_include_directories(stain PUBLIC
