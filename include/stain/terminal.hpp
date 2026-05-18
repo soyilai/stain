@@ -21,6 +21,8 @@ namespace stain {
         bool has_bracketed_paste{false};
         bool has_osc_hyperlinks{false};
         bool has_osc52{false};
+        bool has_kitty_graphics{false};
+        bool has_iterm2_images{false};
     };
 
     // RAII guard: saves terminal state on construction, restores on

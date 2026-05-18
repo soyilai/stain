@@ -45,6 +45,28 @@ else()
     find_package(tl-expected REQUIRED)
 endif()
 
+option(STAIN_ENABLE_IMAGE_PROTOCOLS "Enable Kitty/iTerm2 image protocol support (adds stb_image download)" ON)
+
+if(STAIN_ENABLE_IMAGE_PROTOCOLS)
+    # stb_image.h for decoding image files.
+    set(STB_IMAGE_URL
+        "https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_image.h"
+    )
+    if(NOT EXISTS ${CMAKE_BINARY_DIR}/stb_image.h)
+        message(STATUS "Downloading stb_image.h")
+        file(DOWNLOAD ${STB_IMAGE_URL} ${CMAKE_BINARY_DIR}/stb_image.h)
+    endif()
+
+    # stb_image_write.h for PNG encoding (iTerm2 protocol).
+    set(STB_IMAGE_WRITE_URL
+        "https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_image_write.h"
+    )
+    if(NOT EXISTS ${CMAKE_BINARY_DIR}/stb_image_write.h)
+        message(STATUS "Downloading stb_image_write.h")
+        file(DOWNLOAD ${STB_IMAGE_WRITE_URL} ${CMAKE_BINARY_DIR}/stb_image_write.h)
+    endif()
+endif()
+
 add_library(stain
     src/color.cpp
     src/keybind.cpp
@@ -63,12 +85,23 @@ add_library(stain
     src/ascii_font.cpp
 )
 
+if(STAIN_ENABLE_IMAGE_PROTOCOLS)
+    target_sources(stain PRIVATE src/image.cpp)
+else()
+    target_compile_definitions(stain PRIVATE STAIN_DISABLE_IMAGE_PROTOCOLS)
+endif()
+
 target_include_directories(stain PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
+target_include_directories(stain PRIVATE ${CMAKE_BINARY_DIR})
 target_link_libraries(stain PUBLIC yogacore tl::expected)
 target_compile_options(stain PRIVATE -Wall -Wextra -Wpedantic)
+
+if(NOT STAIN_ENABLE_IMAGE_PROTOCOLS)
+    target_compile_definitions(stain PRIVATE STAIN_DISABLE_IMAGE_PROTOCOLS)
+endif()
 
 include(GNUInstallDirs)
 

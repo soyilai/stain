@@ -13,6 +13,7 @@
 namespace stain {
 
     class Renderable;
+    struct TerminalInfo;
 
     // Text selection between two renderable positions.
     struct Selection {
@@ -101,6 +102,19 @@ namespace stain {
         virtual std::size_t
         on_paste(std::function<void(PasteEvent&)> handler) = 0;
         virtual void off_paste(std::size_t id) = 0;
+
+        // Write raw bytes to the terminal output buffer.
+        virtual void write_raw(std::string_view data) = 0;
+
+        // Queue a raw terminal write to happen after the cell flush,
+        // positioned at specific cell coordinates. Used by Image widget
+        // for Kitty/iTerm2 protocol sequences (must run after cells
+        // are drawn so the image overlay is not overwritten).
+        virtual void
+        write_after_flush(int x, int y, std::string_view data) = 0;
+
+        // Terminal capability information.
+        [[nodiscard]] virtual const TerminalInfo& terminal_info() const = 0;
     };
 
 } // namespace stain

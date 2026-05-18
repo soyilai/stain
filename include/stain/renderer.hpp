@@ -103,6 +103,10 @@ namespace stain {
         std::size_t on_paste(std::function<void(PasteEvent&)> handler) override;
         void off_paste(std::size_t id) override;
 
+        void write_raw(std::string_view data) override;
+        void write_after_flush(int x, int y, std::string_view data) override;
+        [[nodiscard]] const TerminalInfo& terminal_info() const override;
+
         // Access the root renderable.
         [[nodiscard]] Renderable& root();
 

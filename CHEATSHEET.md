@@ -127,6 +127,32 @@ fb.on_frame([](Framebuffer::Frame& frame, double dt, bool first) {
 });
 ```
 
+## image
+
+```cpp
+auto img = image(*renderer);
+img->load("photo.png");
+img->flex_grow(1.f);
+
+// set pixels directly
+auto pixels = make_checkerboard(256, 128);
+img->set_pixels(256, 128, std::move(pixels));
+
+img->fit(ImageFit::Contain);  // Contain, Fill, Cover
+img->filter(ImageScale::Bilinear);  // Nearest, Bilinear
+img->protocol(ImageProtocol::HalfBlock);  // Force half-block
+
+// info
+int iw = img->image_width();
+int ih = img->image_height();
+bool has = img->has_image();
+```
+
+> **Note:** Kitty and iTerm2 protocols are experimental and have known
+> sizing/positioning issues. The half-block fallback is the only reliable
+> rendering path. Use `STAIN_ENABLE_IMAGE_PROTOCOLS=OFF` at build time to
+> disable protocol support and skip the `stb_image` dependencies.
+
 ## animation
 
 ```cpp

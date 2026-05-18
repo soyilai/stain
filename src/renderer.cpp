@@ -60,6 +60,12 @@ namespace stain {
         bool in_bracketed_paste{false};
         std::string paste_buffer;
 
+        struct PendingPlacement {
+            int x, y;
+            std::string data;
+        };
+        std::vector<PendingPlacement> pending_placements;
+
         Impl(RendererOptions o)
             : opts(std::move(o))
             , current_buf(BufferOptions{.width = 1, .height = 1})
@@ -230,6 +236,24 @@ namespace stain {
     }
     void Renderer::off_paste(std::size_t id) {
         _impl->paste_signal.disconnect(id);
+    }
+
+    void Renderer::write_raw(std::string_view data) {
+        if(_impl->terminal)
+            _impl->terminal->write(data);
+    }
+
+    void Renderer::write_after_flush(int x, int y, std::string_view data) {
+        _impl->pending_placements.push_back(
+            {x, y, std::string(data)}
+        );
+    }
+
+    const TerminalInfo& Renderer::terminal_info() const {
+        static TerminalInfo default_info{};
+        if(_impl->terminal)
+            return _impl->terminal->info();
+        return default_info;
     }
 
     Renderable& Renderer::root() {
@@ -435,6 +459,17 @@ namespace stain {
         }
 
         term.flush();
+
+        // Process image placements (Kitty/iTerm2) after the cell flush
+        // so overlays render on top of the cell content.
+        if(!_impl->pending_placements.empty()) {
+            for(auto& p : _impl->pending_placements) {
+                term.move_to(p.x, p.y);
+                term.write(p.data);
+            }
+            _impl->pending_placements.clear();
+            term.flush();
+        }
 
         // swap the underlying cell data.
         std::swap(_impl->current_buf, _impl->next_buf);

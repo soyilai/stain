@@ -129,10 +129,16 @@ namespace stain {
             info.has_true_color = true;
         }
 
-        // Check for Kitty keyboard protocol support via TERM.
+        // Check for Kitty protocol support via TERM.
         const char* term = std::getenv("TERM");
         if(term && std::strstr(term, "kitty")) {
             info.has_kitty_keyboard = true;
+            info.has_kitty_graphics = true;
+        }
+        // Check for iTerm2.
+        const char* term_program = std::getenv("TERM_PROGRAM");
+        if(term_program && std::strcmp(term_program, "iTerm.app") == 0) {
+            info.has_iterm2_images = true;
         }
 
         info.has_mouse_sgr =

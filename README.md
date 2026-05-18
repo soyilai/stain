@@ -12,6 +12,8 @@ Your modern C++20 terminal UI framework.
 - CMake 3.25+
 - [yoga](https://github.com/facebook/yoga)
 - [tl-expected](https://github.com/TartanLlama/expected)
+- stb_image (optional)
+- stb_image_write (optional)
 
 Tests additionally require [GTest](https://github.com/google/googletest).
 
@@ -29,6 +31,12 @@ Build only the library (skip examples and tests):
 ```sh
 cmake -B build -DSTAIN_BUILD_EXAMPLES=OFF -DSTAIN_BUILD_TESTS=OFF
 cmake --build build
+```
+
+Additionally, to disable compiling terminal image rendering features along with their dependencies (stb_image), you may add:
+
+```
+-DSTAIN_ENABLE_IMAGE_PROTOCOLS=OFF
 ```
 
 Install with `cmake --install build`. Installs `libstain.a`, headers, and CMake package config. Once installed, use from another project with:
@@ -79,8 +87,9 @@ Three example programs in `examples/`:
 | `demo`        | All widgets wired together with focus cycling               |
 | `framebuffer` | Per-cell plasma effect using `Framebuffer::on_frame`        |
 | `animation`   | Bouncing ball, particle system, color fill with hue cycling |
+| `image`       | Image loading, fit switching, protocol auto-detection       |
 
-A exahustive cheatsheet is found at `CHEATSHEET.md` at the root of this project. You may also find useful the documentation contained in header files!
+An exhaustive cheatsheet is found at `CHEATSHEET.md` at the root of this project. You may also find useful the documentation contained in header files!
 
 More examples and actual documentation coming soon!
 
