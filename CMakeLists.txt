@@ -151,7 +151,7 @@ install(FILES
 )
 
 option(STAIN_BUILD_EXAMPLES "Build examples" ON)
-option(STAIN_BUILD_TESTS "Build tests" ON)
+option(STAIN_BUILD_TESTS "Build tests" OFF)
 
 if(STAIN_BUILD_EXAMPLES)
     add_subdirectory(examples)
