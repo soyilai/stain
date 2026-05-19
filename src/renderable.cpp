@@ -756,6 +756,13 @@ namespace stain {
         _focused = true;
 
         _key_conn_id = _ctx->on_key([this](KeyEvent& key) -> bool {
+            if(key.type == KeyEventType::Release) {
+                if(_opts.on_key_up && !key.propagation_stopped()) {
+                    _opts.on_key_up(key);
+                }
+                emit(events::KeyUp{key});
+                return !key.propagation_stopped();
+            }
             handle_key_press(key);
             if(_opts.on_key_down && !key.propagation_stopped()) {
                 _opts.on_key_down(key);
@@ -984,6 +991,8 @@ namespace stain {
                 );
             }
         }
+
+        emit(events::LayoutChanged{});
 
         // Recurse into children.
         for(auto& child : _children_layout_order) {

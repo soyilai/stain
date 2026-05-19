@@ -145,6 +145,7 @@ namespace stain {
         // Callback hooks for common events.
         std::function<void()> on_size_change;
         std::function<void(KeyEvent&)> on_key_down;
+        std::function<void(KeyEvent&)> on_key_up;
         std::function<void(PasteEvent&)> on_paste;
         std::function<void(MouseEvent&)> on_mouse_down;
         std::function<void(MouseEvent&)> on_mouse_up;
@@ -244,7 +245,9 @@ namespace stain {
             events::Focused,
             events::Blurred,
             events::LayoutChanged,
+            events::TextLayoutChanged,
             events::KeyDown,
+            events::KeyUp,
             events::MouseDown,
             events::MouseUp,
             events::MouseMove,

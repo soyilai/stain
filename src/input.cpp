@@ -811,6 +811,7 @@ namespace stain {
             if(_input_opts.on_enter)
                 _input_opts.on_enter(v);
             emit(events::InputEntered{v});
+            emit(events::Submit{v});
             return true;
         }
         if(_input_opts.max_length > 0 &&

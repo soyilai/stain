@@ -53,6 +53,7 @@ namespace stain {
 
     Text& Text::content(StyledText text) {
         _text = std::move(text);
+        emit(events::TextLayoutChanged{});
         request_render();
         return *this;
     }
@@ -64,6 +65,7 @@ namespace stain {
             _text_opts.bg,
             _text_opts.attr
         }};
+        emit(events::TextLayoutChanged{});
         request_render();
         return *this;
     }
@@ -89,6 +91,7 @@ namespace stain {
     }
     Text& Text::wrap(WrapMode m) {
         _text_opts.wrap_mode = m;
+        emit(events::TextLayoutChanged{});
         request_render();
         return *this;
     }

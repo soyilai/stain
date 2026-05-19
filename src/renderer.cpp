@@ -643,7 +643,8 @@ namespace stain {
                     break;
                 }
                 case 'u': {
-                    // Kitty keyboard protocol: ESC[code;modsu
+                    // Kitty keyboard protocol: ESC[code;modifiers:Nu
+                    //   N absent or 1 = press, 2 = repeat, 3 = release
                     std::string_view inner(data + 2, consumed - 3);
                     auto semi = inner.find(';');
                     int code = 0, mod_raw = 1;
@@ -657,7 +658,20 @@ namespace stain {
                     };
                     if(semi != std::string_view::npos) {
                         code = parse_num(inner.substr(0, semi));
-                        mod_raw = parse_num(inner.substr(semi + 1));
+                        auto rest = inner.substr(semi + 1);
+                        auto colon = rest.find(':');
+                        if(colon != std::string_view::npos) {
+                            mod_raw = parse_num(rest.substr(0, colon));
+                            auto type_val = parse_num(rest.substr(colon + 1));
+                            if(type_val == 2) {
+                                event.type = KeyEventType::Repeat;
+                                event.repeated = true;
+                            } else if(type_val == 3) {
+                                event.type = KeyEventType::Release;
+                            }
+                        } else {
+                            mod_raw = parse_num(rest);
+                        }
                     } else {
                         code = parse_num(inner);
                     }
@@ -669,6 +683,7 @@ namespace stain {
                         event.meta = (bits & 2) != 0;
                         event.ctrl = (bits & 4) != 0;
                     }
+                    event.source = "kitty";
 
                     if(code >= 0xE000 && code <= 0xE00B)
                         event.name = "f" + std::to_string(code - 0xE000 + 1);
@@ -744,23 +759,27 @@ namespace stain {
             event.raw = std::string(data, consumed);
 
             // Detect key repeat: same raw bytes within the time threshold.
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                now - _impl->prev_key_time
-            );
-            bool repeating =
-                elapsed < _impl->key_repeat_threshold &&
-                event.raw == _impl->prev_key_raw;
-            if(repeating) {
-                event.repeated = true;
-                event.type = KeyEventType::Repeat;
-            } else {
-                event.repeated = false;
-                event.type = KeyEventType::Press;
-            }
+            // Only applies to press events — release from Kitty protocol is
+            // already typed correctly.
+            if(event.type != KeyEventType::Release) {
+                auto now = std::chrono::steady_clock::now();
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now - _impl->prev_key_time
+                );
+                bool repeating =
+                    elapsed < _impl->key_repeat_threshold &&
+                    event.raw == _impl->prev_key_raw;
+                if(repeating) {
+                    event.repeated = true;
+                    event.type = KeyEventType::Repeat;
+                } else {
+                    event.repeated = false;
+                    event.type = KeyEventType::Press;
+                }
 
-            _impl->prev_key_raw = event.raw;
-            _impl->prev_key_time = now;
+                _impl->prev_key_raw = event.raw;
+                _impl->prev_key_time = now;
+            }
 
             _impl->key_signal.emit(event);
         }
