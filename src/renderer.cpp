@@ -63,7 +63,7 @@ namespace stain {
         std::string prev_key_raw;
         std::chrono::steady_clock::time_point prev_key_time;
 
-        static constexpr std::chrono::milliseconds key_repeat_threshold{80};
+        static constexpr std::chrono::milliseconds key_repeat_threshold{250};
 
         struct PendingPlacement {
             int x, y;
@@ -250,9 +250,7 @@ namespace stain {
     }
 
     void Renderer::write_after_flush(int x, int y, std::string_view data) {
-        _impl->pending_placements.push_back(
-            {x, y, std::string(data)}
-        );
+        _impl->pending_placements.push_back({x, y, std::string(data)});
     }
 
     const TerminalInfo& Renderer::terminal_info() const {
@@ -540,7 +538,8 @@ namespace stain {
         }
     }
 
-    // Returns the number of bytes consumed, or 0 if no sequence could be parsed.
+    // Returns the number of bytes consumed, or 0 if no sequence could be
+    // parsed.
     std::size_t Renderer::parse_one_key(const char* data, std::size_t len) {
         // Check for mouse sequences first (SGR: ESC[<...M or ESC[<...m).
         std::string_view sv(data, len);
@@ -592,13 +591,15 @@ namespace stain {
             std::size_t term_pos = 2;
             while(term_pos < len) {
                 char c = data[term_pos];
-                if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '~' || c == 'u') {
+                if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                   c == '~' || c == 'u') {
                     break;
                 }
                 term_pos++;
             }
             if(term_pos >= len) {
-                // Unterminated CSI sequence, consume a single byte to avoid blocking.
+                // Unterminated CSI sequence, consume a single byte to avoid
+                // blocking.
                 event.name = "unknown";
                 consumed = 1;
             } else {
@@ -606,12 +607,24 @@ namespace stain {
                 char final_char = data[consumed - 1];
                 bool skip_ansi_modifier = false;
                 switch(final_char) {
-                case 'A': event.name = "up"; break;
-                case 'B': event.name = "down"; break;
-                case 'C': event.name = "right"; break;
-                case 'D': event.name = "left"; break;
-                case 'H': event.name = "home"; break;
-                case 'F': event.name = "end"; break;
+                case 'A':
+                    event.name = "up";
+                    break;
+                case 'B':
+                    event.name = "down";
+                    break;
+                case 'C':
+                    event.name = "right";
+                    break;
+                case 'D':
+                    event.name = "left";
+                    break;
+                case 'H':
+                    event.name = "home";
+                    break;
+                case 'F':
+                    event.name = "end";
+                    break;
                 case '~': {
                     std::string num(data + 2, consumed - 3);
                     if(num == "2")
@@ -651,7 +664,8 @@ namespace stain {
                     auto parse_num = [&](std::string_view s) -> int {
                         int v = 0;
                         for(char ch : s) {
-                            if(ch < '0' || ch > '9') return -1;
+                            if(ch < '0' || ch > '9')
+                                return -1;
                             v = v * 10 + (ch - '0');
                         }
                         return v;
@@ -675,7 +689,10 @@ namespace stain {
                     } else {
                         code = parse_num(inner);
                     }
-                    if(code < 0) { event.name = "unknown"; break; }
+                    if(code < 0) {
+                        event.name = "unknown";
+                        break;
+                    }
 
                     if(mod_raw >= 2) {
                         int bits = mod_raw - 1;
@@ -687,28 +704,45 @@ namespace stain {
 
                     if(code >= 0xE000 && code <= 0xE00B)
                         event.name = "f" + std::to_string(code - 0xE000 + 1);
-                    else if(code == 0xE010) event.name = "left";
-                    else if(code == 0xE011) event.name = "right";
-                    else if(code == 0xE012) event.name = "up";
-                    else if(code == 0xE013) event.name = "down";
-                    else if(code == 0xE014) event.name = "home";
-                    else if(code == 0xE015) event.name = "end";
-                    else if(code == 0xE016) event.name = "insert";
-                    else if(code == 0xE017) event.name = "delete";
-                    else if(code == 0xE018) event.name = "pageup";
-                    else if(code == 0xE019) event.name = "pagedown";
-                    else if(code == 27)     event.name = "escape";
-                    else if(code == 9)      event.name = "tab";
-                    else if(code == 13)     event.name = "return";
-                    else if(code == 127)    event.name = "backspace";
+                    else if(code == 0xE010)
+                        event.name = "left";
+                    else if(code == 0xE011)
+                        event.name = "right";
+                    else if(code == 0xE012)
+                        event.name = "up";
+                    else if(code == 0xE013)
+                        event.name = "down";
+                    else if(code == 0xE014)
+                        event.name = "home";
+                    else if(code == 0xE015)
+                        event.name = "end";
+                    else if(code == 0xE016)
+                        event.name = "insert";
+                    else if(code == 0xE017)
+                        event.name = "delete";
+                    else if(code == 0xE018)
+                        event.name = "pageup";
+                    else if(code == 0xE019)
+                        event.name = "pagedown";
+                    else if(code == 27)
+                        event.name = "escape";
+                    else if(code == 9)
+                        event.name = "tab";
+                    else if(code == 13)
+                        event.name = "return";
+                    else if(code == 127)
+                        event.name = "backspace";
                     else if(code >= 32 && code <= 126) {
                         event.name = std::string(1, static_cast<char>(code));
                         event.sequence = event.name;
-                    } else if(code == 8)    event.name = "backspace";
-                    else if(code == 10)     event.name = "return";
+                    } else if(code == 8)
+                        event.name = "backspace";
+                    else if(code == 10)
+                        event.name = "return";
                     else {
                         char utf8_buf[5] = {};
-                        int n = encode_utf8(static_cast<char32_t>(code), utf8_buf);
+                        int n =
+                            encode_utf8(static_cast<char32_t>(code), utf8_buf);
                         utf8_buf[n] = '\0';
                         event.name = std::string(utf8_buf);
                         event.sequence = event.name;
@@ -722,7 +756,8 @@ namespace stain {
                 }
 
                 // Check for modifier parameters (CSI 1;2A = shift+up, etc.)
-                if(!skip_ansi_modifier && consumed >= 5 && data[2] == '1' && data[3] == ';') {
+                if(!skip_ansi_modifier && consumed >= 5 && data[2] == '1' &&
+                   data[3] == ';') {
                     int mod = data[4] - '0';
                     if(mod >= 2 && mod <= 8) {
                         int bits = mod - 1;
@@ -732,7 +767,9 @@ namespace stain {
                     }
                 }
             }
-        } else if(len >= 2 && data[0] == '\033' && data[1] != '\033' && data[1] != '[') {
+        } else if(
+            len >= 2 && data[0] == '\033' && data[1] != '\033' && data[1] != '['
+        ) {
             // Alt + key.
             event.name = std::string(1, data[1]);
             event.meta = true;
@@ -759,20 +796,21 @@ namespace stain {
             event.raw = std::string(data, consumed);
 
             // Detect key repeat: same raw bytes within the time threshold.
-            // Only applies to press events — release from Kitty protocol is
-            // already typed correctly.
+            // For Kitty protocol events with explicit type (:1/:2/:3), the
+            // parser already set the correct type, so only the `repeating`
+            // branch applies; the `else` override to Press is skipped.
             if(event.type != KeyEventType::Release) {
                 auto now = std::chrono::steady_clock::now();
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    now - _impl->prev_key_time
-                );
-                bool repeating =
-                    elapsed < _impl->key_repeat_threshold &&
-                    event.raw == _impl->prev_key_raw;
+                auto elapsed =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now - _impl->prev_key_time
+                    );
+                bool repeating = elapsed < _impl->key_repeat_threshold &&
+                                 event.raw == _impl->prev_key_raw;
                 if(repeating) {
                     event.repeated = true;
                     event.type = KeyEventType::Repeat;
-                } else {
+                } else if(event.source != "kitty") {
                     event.repeated = false;
                     event.type = KeyEventType::Press;
                 }
