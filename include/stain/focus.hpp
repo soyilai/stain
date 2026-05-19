@@ -3,6 +3,8 @@
 #include "stain/event.hpp"
 #include "stain/renderable.hpp"
 
+#include <cstddef>
+#include <memory>
 #include <vector>
 
 namespace stain {
@@ -17,8 +19,19 @@ namespace stain {
     //   cycler.enable_auto_cycle(renderer);
     class FocusCycler {
         public:
+        FocusCycler() = default;
+        ~FocusCycler();
+
+        FocusCycler(const FocusCycler&) = delete;
+        FocusCycler& operator=(const FocusCycler&) = delete;
+        FocusCycler(FocusCycler&&) = delete;
+        FocusCycler& operator=(FocusCycler&&) = delete;
+
         // Register a focusable renderable.
         void add(Renderable* r);
+
+        // Remove a renderable from tracking.
+        void remove(Renderable* r);
 
         // Handle Tab (forward) and Shift+Tab (backward) keys.
         // Returns true if the key was handled.
@@ -34,9 +47,15 @@ namespace stain {
         // Register as a global key handler on the renderer.
         void enable_auto_cycle(Renderer& renderer);
 
+        // Disconnect the key handler from the renderer.
+        void disable_auto_cycle();
+
         private:
         void cycle(int dir);
+        void remove_dangling();
         std::vector<Renderable*> _focusable;
+        Renderer* _renderer{nullptr};
+        std::size_t _key_conn_id{0};
     };
 
 } // namespace stain

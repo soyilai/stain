@@ -126,7 +126,7 @@ namespace stain {
         void diff_and_flush();
 
         void handle_stdin(const char* data, std::size_t len);
-        void parse_key_sequence(const char* data, std::size_t len);
+        std::size_t parse_one_key(const char* data, std::size_t len);
         void parse_mouse_sequence(const char* data, std::size_t len);
 
         struct Impl;

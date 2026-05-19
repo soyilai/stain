@@ -195,15 +195,15 @@ namespace stain {
         if(_impl->clipped(x, y))
             return;
 
+        if(cell.bg.is_transparent()) {
+            cell.bg = _impl->at(x, y).bg;
+        }
+
         // Apply opacity to the cell colors.
         float op = _impl->effective_opacity();
         if(op < 1.0f) {
             cell.fg.a *= op;
             cell.bg.a *= op;
-        }
-
-        if(cell.bg.is_transparent()) {
-            cell.bg = _impl->at(x, y).bg;
         }
 
         _impl->at(x, y) = cell;

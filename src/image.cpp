@@ -1,4 +1,5 @@
 #include "stain/image.hpp"
+#include "stain/detail/util.hpp"
 #include "stain/terminal.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -17,39 +18,7 @@ namespace stain {
 
     namespace {
 
-        std::string base64_encode(std::string_view data) {
-            static constexpr char tbl[] =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-                "+/";
-            std::string out;
-            out.reserve(((data.size() + 2) / 3) * 4);
-            std::size_t i = 0;
-            while(i + 3 <= data.size()) {
-                auto a = static_cast<uint8_t>(data[i]);
-                auto b = static_cast<uint8_t>(data[i + 1]);
-                auto c = static_cast<uint8_t>(data[i + 2]);
-                out.push_back(tbl[a >> 2]);
-                out.push_back(tbl[((a << 4) | (b >> 4)) & 0x3F]);
-                out.push_back(tbl[((b << 2) | (c >> 6)) & 0x3F]);
-                out.push_back(tbl[c & 0x3F]);
-                i += 3;
-            }
-            if(i < data.size()) {
-                auto a = static_cast<uint8_t>(data[i]);
-                out.push_back(tbl[a >> 2]);
-                if(i + 1 < data.size()) {
-                    auto b = static_cast<uint8_t>(data[i + 1]);
-                    out.push_back(tbl[((a << 4) | (b >> 4)) & 0x3F]);
-                    out.push_back(tbl[(b << 2) & 0x3F]);
-                    out.push_back('=');
-                } else {
-                    out.push_back(tbl[(a << 4) & 0x3F]);
-                    out.push_back('=');
-                    out.push_back('=');
-                }
-            }
-            return out;
-        }
+        using detail::base64_encode;
 
         struct WriteContext {
             std::vector<unsigned char> buf;
@@ -123,6 +92,31 @@ namespace stain {
     Image::Image(RenderContext* ctx, RenderableOptions opts)
         : Renderable(ctx, std::move(opts))
         , _kitty_place_id(++g_image_id) {
+        _dirty = false;
+    }
+
+    Image::~Image() {
+        send_delete();
+    }
+
+    void Image::send_delete() {
+        if(!_image_placed)
+            return;
+        auto proto = effective_protocol();
+        if(proto == ImageProtocol::Kitty) {
+            std::string delete_seq =
+                "\033_Ga=d,i=" + std::to_string(_kitty_img_id) + ";\033\\";
+            _ctx->write_raw(delete_seq);
+        } else if(proto == ImageProtocol::ITerm2) {
+            // Clear the cell area to remove the iTerm2 image.
+            if(_ctx) {
+                int w = layout_w(), h = layout_h();
+                for(int cy = 0; cy < h; cy++)
+                    for(int cx = 0; cx < w; cx++)
+                        _ctx->write_raw("\033[0m ");
+            }
+        }
+        _image_placed = false;
     }
 
     bool Image::load(std::string_view path) {
@@ -199,16 +193,9 @@ namespace stain {
         _img_h = height;
         _pixels = std::move(pixels);
         _kitty_transmitted = false;
-
-        // Pre-encode for protocols.
-        {
-            _protocol_b64 = encode_rgba_base64(_img_w, _img_h, _pixels);
-        }
-
-        // Pre-encode PNG for iTerm2.
-        {
-            _png_b64 = encode_png_base64(_img_w, _img_h, _pixels);
-        }
+        _placement_dirty = true;
+        _protocol_b64.clear();
+        _png_b64.clear();
 
         request_render();
     }
@@ -234,12 +221,14 @@ namespace stain {
     }
 
     void Image::clear() {
+        send_delete();
         _file_data.clear();
         _protocol_b64.clear();
         _png_b64.clear();
         _img_w = 0;
         _img_h = 0;
         _kitty_transmitted = false;
+        _placement_dirty = false;
         _kitty_img_id = 0;
         request_render();
     }
@@ -289,6 +278,23 @@ namespace stain {
         return lerp(lerp(c00, c10, dx), lerp(c01, c11, dx), dy);
     }
 
+    void Image::ensure_encoded() {
+        if(!_protocol_b64.empty() && !_png_b64.empty())
+            return;
+        auto proto = effective_protocol();
+        if(proto == ImageProtocol::Kitty && _protocol_b64.empty()) {
+            _protocol_b64 = encode_rgba_base64(_img_w, _img_h, _pixels);
+        }
+        if(proto == ImageProtocol::ITerm2 && _png_b64.empty()) {
+            _png_b64 = encode_png_base64(_img_w, _img_h, _pixels);
+        }
+    }
+
+    void Image::destroy() {
+        send_delete();
+        Renderable::destroy();
+    }
+
     void Image::draw(OptimizedBuffer& buf, double /*delta*/) {
         int w = layout_w();
         int h = layout_h();
@@ -300,9 +306,7 @@ namespace stain {
 
         auto proto = effective_protocol();
         if(proto != ImageProtocol::HalfBlock) {
-            // For protocol rendering, leave cells transparent so the
-            // terminal graphics can render on top without interference.
-            // The protocol sequence is queued via write_after_flush.
+            ensure_encoded();
 
             // Clear the cell area so nothing visible sits under the overlay.
             for(int cy = 0; cy < h; cy++)
@@ -312,13 +316,11 @@ namespace stain {
                     );
 
             if(proto == ImageProtocol::Kitty) {
-                // Transmit image data (one-time). Use a=t (lowercase) to
-                // transmit only — a=T would also place, creating a stray
-                // placement at the draw-time cursor position.
+                // Transmit image data (one-time).
                 if(!_kitty_transmitted) {
                     _kitty_img_id = ++g_image_id;
 
-                    std::string& b64 = _protocol_b64;
+                    const std::string& b64 = _protocol_b64;
                     std::size_t pos = 0;
                     bool first = true;
 
@@ -351,10 +353,10 @@ namespace stain {
                     }
 
                     _kitty_transmitted = true;
+                    _placement_dirty = true;
                 }
 
                 // Compute display pixel size from widget cell dimensions.
-                // Without w/h the image renders at its native pixel size.
                 const auto& tinfo = _ctx->terminal_info();
                 int cell_px_w = 10, cell_px_h = 20;
                 if(tinfo.pixel_width > 0 && tinfo.cols > 0)
@@ -389,20 +391,24 @@ namespace stain {
                     }
                 }
 
-                std::string place_seq =
-                    "\033_Ga=p,i=" + std::to_string(_kitty_img_id) +
-                    ",p=" + std::to_string(_kitty_place_id) +
-                    ",c=0,r=0,w=" + std::to_string(disp_w) +
-                    ",h=" + std::to_string(disp_h) + ";\033\\";
-                _ctx->write_after_flush(sx, sy, place_seq);
+                if(_placement_dirty) {
+                    std::string place_seq =
+                        "\033_Ga=p,i=" + std::to_string(_kitty_img_id) +
+                        ",p=" + std::to_string(_kitty_place_id) +
+                        ",c=0,r=0,w=" + std::to_string(disp_w) +
+                        ",h=" + std::to_string(disp_h) + ";\033\\";
+                    _ctx->write_after_flush(sx, sy, place_seq);
+                    _placement_dirty = false;
+                    _image_placed = true;
+                }
             } else if(proto == ImageProtocol::ITerm2) {
-                // iTerm2 inline image — include full image data each time.
                 std::string iterm2_seq =
                     "\033]1337;File=inline=1;size=" +
                     std::to_string(_png_b64.size()) + ";width=" +
                     std::to_string(w) + ";height=" + std::to_string(h) + ":" +
                     _png_b64 + "\a";
                 _ctx->write_after_flush(sx, sy, iterm2_seq);
+                _image_placed = true;
             }
             return;
         }
@@ -460,11 +466,20 @@ namespace stain {
 
                 int img_px = 0, img_py_top = 0, img_py_bot = 0;
                 bool valid_top = true, valid_bot = true;
+                float fx = 0, fy_top = 0, fy_bot = 0;
 
                 if(_fit == ImageFit::Fill) {
                     img_px = cell_px * _img_w / w;
                     img_py_top = cell_py_top * _img_h / cell_h_pixels;
                     img_py_bot = cell_py_bot * _img_h / cell_h_pixels;
+                    fx = (static_cast<float>(cx) + 0.5f) /
+                         static_cast<float>(w) * static_cast<float>(_img_w);
+                    fy_top = (static_cast<float>(cell_py_top) + 0.5f) /
+                             static_cast<float>(cell_h_pixels) *
+                             static_cast<float>(_img_h);
+                    fy_bot = (static_cast<float>(cell_py_bot) + 0.5f) /
+                             static_cast<float>(cell_h_pixels) *
+                             static_cast<float>(_img_h);
                 } else {
                     int rx = cell_px - offset_x;
                     int ry_top = cell_py_top - offset_y_pixels;
@@ -478,17 +493,41 @@ namespace stain {
                     if(valid_top) {
                         img_px = rx * _img_w / render_w;
                         img_py_top = ry_top * _img_h / render_h_pixels;
+                        fx = (static_cast<float>(rx) + 0.5f) /
+                             static_cast<float>(render_w) *
+                             static_cast<float>(_img_w);
+                        fy_top = (static_cast<float>(ry_top) + 0.5f) /
+                                 static_cast<float>(render_h_pixels) *
+                                 static_cast<float>(_img_h);
                     }
                     if(valid_bot) {
                         img_px = rx * _img_w / render_w;
                         img_py_bot = ry_bot * _img_h / render_h_pixels;
+                        fy_bot = (static_cast<float>(ry_bot) + 0.5f) /
+                                 static_cast<float>(render_h_pixels) *
+                                 static_cast<float>(_img_h);
                     }
                 }
 
-                RGBA top = valid_top ? pixel_at(img_px, img_py_top)
-                                     : RGBA::transparent();
-                RGBA bot = valid_bot ? pixel_at(img_px, img_py_bot)
-                                     : RGBA::transparent();
+                RGBA top;
+                if(valid_top) {
+                    if(_filter == ImageScale::Bilinear)
+                        top = sample(fx, fy_top);
+                    else
+                        top = pixel_at(img_px, img_py_top);
+                } else {
+                    top = RGBA::transparent();
+                }
+
+                RGBA bot;
+                if(valid_bot) {
+                    if(_filter == ImageScale::Bilinear)
+                        bot = sample(fx, fy_bot);
+                    else
+                        bot = pixel_at(img_px, img_py_bot);
+                } else {
+                    bot = RGBA::transparent();
+                }
 
                 if(top.is_transparent() && bot.is_transparent())
                     continue;

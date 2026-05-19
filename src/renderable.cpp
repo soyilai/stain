@@ -698,7 +698,7 @@ namespace stain {
     }
 
     Renderable& Renderable::opacity(float o) {
-        _opts.opacity = o;
+        _opts.opacity = std::clamp(o, 0.0f, 1.0f);
         request_render();
         return *this;
     }
@@ -725,6 +725,15 @@ namespace stain {
     Renderable& Renderable::focusable(bool v) {
         _focusable = v;
         _opts.focusable = v;
+        return *this;
+    }
+
+    Renderable& Renderable::render_before(std::function<void(OptimizedBuffer&, double)> cb) {
+        _opts.render_before = std::move(cb);
+        return *this;
+    }
+    Renderable& Renderable::render_after(std::function<void(OptimizedBuffer&, double)> cb) {
+        _opts.render_after = std::move(cb);
         return *this;
     }
 
@@ -790,6 +799,15 @@ namespace stain {
         } else if(!live && _live_count > 0) {
             propagate_live_count(-1);
             _ctx->drop_live();
+            _ctx->unregister_lifecycle(this);
+        }
+        return *this;
+    }
+
+    Renderable& Renderable::lifecycle(bool enable) {
+        if(enable) {
+            _ctx->register_lifecycle(this);
+        } else {
             _ctx->unregister_lifecycle(this);
         }
         return *this;
@@ -984,9 +1002,25 @@ namespace stain {
         if(_opts.render_before)
             _opts.render_before(buf, delta_time);
 
-        // Choose target buffer.
-        OptimizedBuffer& target =
-            (_opts.buffered && _frame_buffer) ? *_frame_buffer : buf;
+        if(_opts.buffered) {
+            // Ensure frame buffer matches the destination buffer size so
+            // screen_x()/screen_y() coordinates from subclass draw() work.
+            if(!_frame_buffer || _frame_buffer->width() != buf.width() ||
+               _frame_buffer->height() != buf.height()) {
+                _frame_buffer.emplace(
+                    BufferOptions{.width = buf.width(), .height = buf.height()}
+                );
+                _frame_buffer->clear();
+            }
+            // Use the cached frame buffer.
+            buf.blit(*_frame_buffer, 0, 0);
+            // render_after callback.
+            if(_opts.render_after)
+                _opts.render_after(buf, delta_time);
+            return;
+        }
+
+        OptimizedBuffer& target = buf;
 
         bool pushed_scissor = false;
         bool pushed_opacity = false;
@@ -1045,11 +1079,6 @@ namespace stain {
             target.pop_opacity();
         if(pushed_scissor)
             target.pop_scissor();
-
-        // Blit frame buffer to parent buffer.
-        if(_opts.buffered && _frame_buffer) {
-            buf.blit(*_frame_buffer, screen_x(), screen_y());
-        }
 
         // render_after callback.
         if(_opts.render_after)
@@ -1127,6 +1156,14 @@ namespace stain {
     }
 
     void Renderable::destroy_recursive() {
+        // Detach children from Yoga before destroying so the parent's
+        // Yoga node doesn't hold dangling pointers to freed children.
+        for(auto& child : _children_layout_order) {
+            auto* r = dynamic_cast<Renderable*>(child.get());
+            if(r && r->_yoga_node) {
+                YGNodeRemoveChild(_yoga_node, r->_yoga_node);
+            }
+        }
         for(auto& child : _children_layout_order) {
             child->destroy_recursive();
         }

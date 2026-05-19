@@ -245,7 +245,6 @@ namespace stain {
             events::Blurred,
             events::LayoutChanged,
             events::KeyDown,
-            events::KeyUp,
             events::MouseDown,
             events::MouseUp,
             events::MouseMove,
@@ -256,8 +255,7 @@ namespace stain {
             events::ItemSelected,
             events::InputChanged,
             events::InputEntered,
-            events::Submit,
-            events::TextLayoutChanged>
+            events::Submit>
             _emitter;
 
         static inline std::atomic<int> _global_counter{0};
@@ -333,6 +331,9 @@ namespace stain {
         Renderable& focusable(bool v);
         // Enable offscreen buffer for cached rendering.
         Renderable& buffered(bool v);
+        // Register a callback that runs before/after draw().
+        Renderable& render_before(std::function<void(OptimizedBuffer&, double)> cb);
+        Renderable& render_after(std::function<void(OptimizedBuffer&, double)> cb);
 
         [[nodiscard]] bool focusable() const noexcept {
             return _focusable;
@@ -349,6 +350,9 @@ namespace stain {
         [[nodiscard]] int live_count() const noexcept {
             return _live_count;
         }
+        // Register for per-frame lifecycle callbacks without enabling the
+        // render loop. on_lifecycle_pass is called every frame regardless.
+        Renderable& lifecycle(bool enable);
 
         // Child management.
         int add(

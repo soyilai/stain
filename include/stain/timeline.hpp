@@ -144,7 +144,7 @@ inline float ease_in_out_bounce(float t) {
 
 struct AnimProperty {
     float to{};
-    easing::EasingFn ease{easing::linear};
+    std::function<float(float)> ease{easing::linear};
 };
 
 class Animation {
@@ -219,6 +219,8 @@ class Timeline : public std::enable_shared_from_this<Timeline> {
         return _done;
     }
 
+    [[nodiscard]] float effective_duration() const;
+
     void update(double dt_s);
 
     private:
@@ -233,8 +235,6 @@ class Timeline : public std::enable_shared_from_this<Timeline> {
     std::vector<std::unique_ptr<Animation>> _animations;
     std::function<void()> _on_complete;
     std::function<void()> _on_pause;
-
-    float effective_duration() const;
 };
 
 } // namespace stain

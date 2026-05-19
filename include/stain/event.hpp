@@ -17,6 +17,12 @@ namespace stain {
     //       if (key.name == "escape") { ... }
     //       return !key.propagation_stopped();
     //   });
+    // Modifier flags (shift/ctrl/meta/super) are populated from escape sequence
+    // information. In legacy terminal encoding, simple modifier+letter combos
+    // (e.g. Shift+A, Ctrl+1) are sent as the resulting character byte without
+    // any modifier flag. The flags are reliably set only when the terminal uses
+    // the Kitty keyboard protocol (mode 1+ or CSI u sequences) or for ANSI
+    // functional-key sequences (arrow keys, etc.).
     struct KeyEvent {
         std::string name; // "a", "up", "return", "f1", etc.
         bool ctrl{false};

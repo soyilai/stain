@@ -18,6 +18,7 @@ namespace stain {
         virtual ~TextStorage() = default;
         [[nodiscard]] virtual std::string text() const = 0;
         [[nodiscard]] virtual int length() const noexcept = 0;
+        [[nodiscard]] virtual int codepoint_count() const noexcept = 0;
         virtual void text(std::string_view text) = 0;
         virtual void insert(int offset, std::string_view text) = 0;
         virtual void erase(int start, int end) = 0;
@@ -31,6 +32,17 @@ namespace stain {
         }
         [[nodiscard]] int length() const noexcept override {
             return static_cast<int>(_data.size());
+        }
+        [[nodiscard]] int codepoint_count() const noexcept {
+            int count = 0;
+            std::size_t pos = 0;
+            while(pos < _data.size()) {
+                char32_t cp = decode_utf8(_data, pos);
+                if(cp == U'\0')
+                    break;
+                count++;
+            }
+            return count;
         }
         void text(std::string_view text) override {
             _data = std::string(text);
@@ -64,6 +76,8 @@ namespace stain {
         // Full text content.
         [[nodiscard]] std::string plain_text() const;
         [[nodiscard]] int length() const noexcept;
+        // Number of Unicode codepoints (characters, not bytes).
+        [[nodiscard]] int codepoint_count() const noexcept;
         // Current cursor position as byte offset.
         [[nodiscard]] int cursor_offset() const noexcept;
 

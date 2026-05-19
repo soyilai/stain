@@ -60,6 +60,11 @@ namespace stain {
         bool in_bracketed_paste{false};
         std::string paste_buffer;
 
+        std::string prev_key_raw;
+        std::chrono::steady_clock::time_point prev_key_time;
+
+        static constexpr std::chrono::milliseconds key_repeat_threshold{80};
+
         struct PendingPlacement {
             int x, y;
             std::string data;
@@ -69,7 +74,8 @@ namespace stain {
         Impl(RendererOptions o)
             : opts(std::move(o))
             , current_buf(BufferOptions{.width = 1, .height = 1})
-            , next_buf(BufferOptions{.width = 1, .height = 1}) {
+            , next_buf(BufferOptions{.width = 1, .height = 1})
+            , prev_key_time(std::chrono::steady_clock::now()) {
         }
     };
 
@@ -525,29 +531,43 @@ namespace stain {
             return;
         }
 
-        parse_key_sequence(data, len);
+        while(len > 0) {
+            std::size_t consumed = parse_one_key(data, len);
+            if(consumed == 0)
+                break;
+            data += consumed;
+            len -= consumed;
+        }
     }
 
-    void Renderer::parse_key_sequence(const char* data, std::size_t len) {
+    // Returns the number of bytes consumed, or 0 if no sequence could be parsed.
+    std::size_t Renderer::parse_one_key(const char* data, std::size_t len) {
         // Check for mouse sequences first (SGR: ESC[<...M or ESC[<...m).
         std::string_view sv(data, len);
         if(sv.size() >= 3 && sv[0] == '\033' && sv[1] == '[' && sv[2] == '<') {
             parse_mouse_sequence(data, len);
-            return;
+            // Find the end of the mouse sequence.
+            char term = sv.back();
+            if(term == 'M' || term == 'm') {
+                // The full buffer was the sequence.
+                return len;
+            }
+            return 1; // fallback
         }
 
         KeyEvent event;
         event.source = "raw";
 
+        std::size_t consumed = 0;
+
         if(len == 1) {
             char c = data[0];
             if(c == 3) {
-                // Ctrl+C.
                 event.name = "c";
                 event.ctrl = true;
                 if(_impl->opts._exit_on_ctrl_c) {
                     _impl->running = false;
-                    return;
+                    return 1;
                 }
             } else if(c == 13 || c == 10) {
                 event.name = "return";
@@ -566,149 +586,185 @@ namespace stain {
             } else {
                 event.name = "unknown";
             }
-        } else if(len >= 3 && data[0] == '\033' && data[1] == '[') {
-            // CSI sequences.
-            char final_char = data[len - 1];
-            bool skip_ansi_modifier = false;
-            switch(final_char) {
-            case 'A':
-                event.name = "up";
-                break;
-            case 'B':
-                event.name = "down";
-                break;
-            case 'C':
-                event.name = "right";
-                break;
-            case 'D':
-                event.name = "left";
-                break;
-            case 'H':
-                event.name = "home";
-                break;
-            case 'F':
-                event.name = "end";
-                break;
-            case '~': {
-                // Parse number before ~.
-                std::string num(sv.substr(2, len - 3));
-                if(num == "2")
-                    event.name = "insert";
-                else if(num == "3")
-                    event.name = "delete";
-                else if(num == "5")
-                    event.name = "pageup";
-                else if(num == "6")
-                    event.name = "pagedown";
-                else if(num == "15")
-                    event.name = "f5";
-                else if(num == "17")
-                    event.name = "f6";
-                else if(num == "18")
-                    event.name = "f7";
-                else if(num == "19")
-                    event.name = "f8";
-                else if(num == "20")
-                    event.name = "f9";
-                else if(num == "21")
-                    event.name = "f10";
-                else if(num == "23")
-                    event.name = "f11";
-                else if(num == "24")
-                    event.name = "f12";
-                else
-                    event.name = "unknown";
-                break;
+            consumed = 1;
+        } else if(data[0] == '\033' && data[1] == '[') {
+            // CSI sequence: find the terminator (a letter, ~, or u).
+            std::size_t term_pos = 2;
+            while(term_pos < len) {
+                char c = data[term_pos];
+                if((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '~' || c == 'u') {
+                    break;
+                }
+                term_pos++;
             }
-            case 'u': {
-                // Kitty keyboard protocol: ESC[code;modsu
-                std::string_view inner(sv.substr(2, len - 3));
-                auto semi = inner.find(';');
-                int code = 0, mod_raw = 1;
-                auto parse_num = [&](std::string_view s) -> int {
-                    int v = 0;
-                    for(char ch : s) {
-                        if(ch < '0' || ch > '9') return -1;
-                        v = v * 10 + (ch - '0');
-                    }
-                    return v;
-                };
-                if(semi != std::string_view::npos) {
-                    code = parse_num(inner.substr(0, semi));
-                    mod_raw = parse_num(inner.substr(semi + 1));
-                } else {
-                    code = parse_num(inner);
-                }
-                if(code < 0) { event.name = "unknown"; break; }
-
-                if(mod_raw >= 2 && mod_raw <= 8) {
-                    int bits = mod_raw - 1;
-                    event.shift = (bits & 1) != 0;
-                    event.meta = (bits & 2) != 0;
-                    event.ctrl = (bits & 4) != 0;
-                }
-
-                if(code >= 0xE000 && code <= 0xE00B) {
-                    event.name = "f" + std::to_string(code - 0xE000 + 1);
-                } else if(code == 0xE010)      event.name = "left";
-                else if(code == 0xE011)      event.name = "right";
-                else if(code == 0xE012)      event.name = "up";
-                else if(code == 0xE013)      event.name = "down";
-                else if(code == 0xE014)      event.name = "home";
-                else if(code == 0xE015)      event.name = "end";
-                else if(code == 0xE016)      event.name = "insert";
-                else if(code == 0xE017)      event.name = "delete";
-                else if(code == 0xE018)      event.name = "pageup";
-                else if(code == 0xE019)      event.name = "pagedown";
-                else if(code == 27)          event.name = "escape";
-                else if(code == 9)           event.name = "tab";
-                else if(code == 13)          event.name = "return";
-                else if(code == 127)         event.name = "backspace";
-                else if(code >= 32 && code <= 126) {
-                    event.name = std::string(1, static_cast<char>(code));
-                    event.sequence = event.name;
-                } else if(code == 8)         event.name = "backspace";
-                else if(code == 10)          event.name = "return";
-                else {
-                    char utf8_buf[5] = {};
-                    int n = encode_utf8(static_cast<char32_t>(code), utf8_buf);
-                    utf8_buf[n] = '\0';
-                    event.name = std::string(utf8_buf);
-                    event.sequence = event.name;
-                }
-                // Kitty 'u' sequences carry their own modifier info.
-                skip_ansi_modifier = true;
-                break;
-            }
-            default:
+            if(term_pos >= len) {
+                // Unterminated CSI sequence, consume a single byte to avoid blocking.
                 event.name = "unknown";
-                break;
-            }
+                consumed = 1;
+            } else {
+                consumed = term_pos + 1;
+                char final_char = data[consumed - 1];
+                bool skip_ansi_modifier = false;
+                switch(final_char) {
+                case 'A': event.name = "up"; break;
+                case 'B': event.name = "down"; break;
+                case 'C': event.name = "right"; break;
+                case 'D': event.name = "left"; break;
+                case 'H': event.name = "home"; break;
+                case 'F': event.name = "end"; break;
+                case '~': {
+                    std::string num(data + 2, consumed - 3);
+                    if(num == "2")
+                        event.name = "insert";
+                    else if(num == "3")
+                        event.name = "delete";
+                    else if(num == "5")
+                        event.name = "pageup";
+                    else if(num == "6")
+                        event.name = "pagedown";
+                    else if(num == "15")
+                        event.name = "f5";
+                    else if(num == "17")
+                        event.name = "f6";
+                    else if(num == "18")
+                        event.name = "f7";
+                    else if(num == "19")
+                        event.name = "f8";
+                    else if(num == "20")
+                        event.name = "f9";
+                    else if(num == "21")
+                        event.name = "f10";
+                    else if(num == "23")
+                        event.name = "f11";
+                    else if(num == "24")
+                        event.name = "f12";
+                    else
+                        event.name = "unknown";
+                    break;
+                }
+                case 'u': {
+                    // Kitty keyboard protocol: ESC[code;modsu
+                    std::string_view inner(data + 2, consumed - 3);
+                    auto semi = inner.find(';');
+                    int code = 0, mod_raw = 1;
+                    auto parse_num = [&](std::string_view s) -> int {
+                        int v = 0;
+                        for(char ch : s) {
+                            if(ch < '0' || ch > '9') return -1;
+                            v = v * 10 + (ch - '0');
+                        }
+                        return v;
+                    };
+                    if(semi != std::string_view::npos) {
+                        code = parse_num(inner.substr(0, semi));
+                        mod_raw = parse_num(inner.substr(semi + 1));
+                    } else {
+                        code = parse_num(inner);
+                    }
+                    if(code < 0) { event.name = "unknown"; break; }
 
-            // Check for modifier parameters (CSI 1;2A = shift+up, etc.)
-            // ANSI modifiers are 1-indexed: raw=2 means modifier bits=1
-            if(!skip_ansi_modifier && len >= 5 && data[2] == '1' && data[3] == ';') {
+                    if(mod_raw >= 2) {
+                        int bits = mod_raw - 1;
+                        event.shift = (bits & 1) != 0;
+                        event.meta = (bits & 2) != 0;
+                        event.ctrl = (bits & 4) != 0;
+                    }
 
-                int mod = data[4] - '0';
-                if(mod >= 2 && mod <= 8) {
-                    int bits = mod - 1;
-                    event.shift = (bits & 1) != 0;
-                    event.meta = (bits & 2) != 0;
-                    event.ctrl = (bits & 4) != 0;
+                    if(code >= 0xE000 && code <= 0xE00B)
+                        event.name = "f" + std::to_string(code - 0xE000 + 1);
+                    else if(code == 0xE010) event.name = "left";
+                    else if(code == 0xE011) event.name = "right";
+                    else if(code == 0xE012) event.name = "up";
+                    else if(code == 0xE013) event.name = "down";
+                    else if(code == 0xE014) event.name = "home";
+                    else if(code == 0xE015) event.name = "end";
+                    else if(code == 0xE016) event.name = "insert";
+                    else if(code == 0xE017) event.name = "delete";
+                    else if(code == 0xE018) event.name = "pageup";
+                    else if(code == 0xE019) event.name = "pagedown";
+                    else if(code == 27)     event.name = "escape";
+                    else if(code == 9)      event.name = "tab";
+                    else if(code == 13)     event.name = "return";
+                    else if(code == 127)    event.name = "backspace";
+                    else if(code >= 32 && code <= 126) {
+                        event.name = std::string(1, static_cast<char>(code));
+                        event.sequence = event.name;
+                    } else if(code == 8)    event.name = "backspace";
+                    else if(code == 10)     event.name = "return";
+                    else {
+                        char utf8_buf[5] = {};
+                        int n = encode_utf8(static_cast<char32_t>(code), utf8_buf);
+                        utf8_buf[n] = '\0';
+                        event.name = std::string(utf8_buf);
+                        event.sequence = event.name;
+                    }
+                    skip_ansi_modifier = true;
+                    break;
+                }
+                default:
+                    event.name = "unknown";
+                    break;
+                }
+
+                // Check for modifier parameters (CSI 1;2A = shift+up, etc.)
+                if(!skip_ansi_modifier && consumed >= 5 && data[2] == '1' && data[3] == ';') {
+                    int mod = data[4] - '0';
+                    if(mod >= 2 && mod <= 8) {
+                        int bits = mod - 1;
+                        event.shift = (bits & 1) != 0;
+                        event.meta = (bits & 2) != 0;
+                        event.ctrl = (bits & 4) != 0;
+                    }
                 }
             }
-        } else if(len == 2 && data[0] == '\033') {
+        } else if(len >= 2 && data[0] == '\033' && data[1] != '\033' && data[1] != '[') {
             // Alt + key.
             event.name = std::string(1, data[1]);
             event.meta = true;
+            consumed = 2;
+        } else if(len >= 2 && data[0] == '\033' && data[1] == '\033') {
+            // Esc + something else — consume one byte.
+            event.name = "escape";
+            consumed = 1;
         } else {
-            // Multi-byte UTF-8 character.
-            event.name = std::string(data, len);
-            event.sequence = event.name;
+            // Multi-byte UTF-8 character or single ASCII.
+            std::size_t pos = 0;
+            decode_utf8(sv, pos);
+            if(pos > 0 && pos <= len) {
+                consumed = pos;
+                event.name = std::string(data, consumed);
+                event.sequence = event.name;
+            } else {
+                consumed = 1;
+                event.name = "unknown";
+            }
         }
 
-        event.raw = std::string(data, len);
-        _impl->key_signal.emit(event);
+        if(consumed > 0) {
+            event.raw = std::string(data, consumed);
+
+            // Detect key repeat: same raw bytes within the time threshold.
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                now - _impl->prev_key_time
+            );
+            bool repeating =
+                elapsed < _impl->key_repeat_threshold &&
+                event.raw == _impl->prev_key_raw;
+            if(repeating) {
+                event.repeated = true;
+                event.type = KeyEventType::Repeat;
+            } else {
+                event.repeated = false;
+                event.type = KeyEventType::Press;
+            }
+
+            _impl->prev_key_raw = event.raw;
+            _impl->prev_key_time = now;
+
+            _impl->key_signal.emit(event);
+        }
+        return consumed;
     }
 
     void Renderer::parse_mouse_sequence(const char* data, std::size_t len) {

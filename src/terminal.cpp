@@ -1,3 +1,4 @@
+#include "stain/detail/util.hpp"
 #include "stain/terminal.hpp"
 
 #include <cstdio>
@@ -129,9 +130,13 @@ namespace stain {
             info.has_true_color = true;
         }
 
-        // Check for Kitty protocol support via TERM.
+        // Check for Kitty protocol support via TERM or KITTY_WINDOW_ID.
         const char* term = std::getenv("TERM");
-        if(term && std::strstr(term, "kitty")) {
+        const char* kitty_win = std::getenv("KITTY_WINDOW_ID");
+        const char* term_prog = std::getenv("TERM_PROGRAM");
+        if((term && std::strstr(term, "kitty")) ||
+           kitty_win ||
+           (term_prog && std::strcmp(term_prog, "kitty") == 0)) {
             info.has_kitty_keyboard = true;
             info.has_kitty_graphics = true;
         }
@@ -239,45 +244,8 @@ namespace stain {
         write(std::string_view(buf, static_cast<std::size_t>(n)));
     }
 
-    namespace {
-
-        std::string base64_encode(std::string_view data) {
-            static constexpr char tbl[] =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-            std::string out;
-            out.reserve(((data.size() + 2) / 3) * 4);
-            std::size_t i = 0;
-            while(i + 3 <= data.size()) {
-                auto a = static_cast<uint8_t>(data[i]);
-                auto b = static_cast<uint8_t>(data[i + 1]);
-                auto c = static_cast<uint8_t>(data[i + 2]);
-                out.push_back(tbl[a >> 2]);
-                out.push_back(tbl[((a << 4) | (b >> 4)) & 0x3F]);
-                out.push_back(tbl[((b << 2) | (c >> 6)) & 0x3F]);
-                out.push_back(tbl[c & 0x3F]);
-                i += 3;
-            }
-            if(i < data.size()) {
-                auto a = static_cast<uint8_t>(data[i]);
-                out.push_back(tbl[a >> 2]);
-                if(i + 1 < data.size()) {
-                    auto b = static_cast<uint8_t>(data[i + 1]);
-                    out.push_back(tbl[((a << 4) | (b >> 4)) & 0x3F]);
-                    out.push_back(tbl[(b << 2) & 0x3F]);
-                    out.push_back('=');
-                } else {
-                    out.push_back(tbl[(a << 4) & 0x3F]);
-                    out.push_back('=');
-                    out.push_back('=');
-                }
-            }
-            return out;
-        }
-
-    } // anonymous namespace
-
     void TerminalGuard::clipboard_copy(std::string_view text) {
-        auto encoded = base64_encode(text);
+        auto encoded = detail::base64_encode(text);
         write("\033]52;c;" + encoded + "\033\\");
         flush();
     }

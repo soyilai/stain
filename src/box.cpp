@@ -4,6 +4,42 @@
 
 namespace stain {
 
+    namespace {
+
+        int display_width(std::string_view s) {
+            std::size_t pos = 0;
+            int w = 0;
+            while(pos < s.size()) {
+                char32_t cp = decode_utf8(s, pos);
+                if(cp == U'\0')
+                    break;
+                w += char_display_width(cp);
+            }
+            return w;
+        }
+
+        std::string_view truncate_by_width(std::string_view s, int max_w) {
+            if(max_w <= 0)
+                return s.substr(0, 0);
+            std::size_t pos = 0;
+            std::size_t last_pos = 0;
+            int w = 0;
+            while(pos < s.size()) {
+                std::size_t cp_start = pos;
+                char32_t cp = decode_utf8(s, pos);
+                if(cp == U'\0')
+                    break;
+                int cw = char_display_width(cp);
+                if(w + cw > max_w)
+                    break;
+                w += cw;
+                last_pos = pos;
+            }
+            return s.substr(0, last_pos);
+        }
+
+    } // anonymous namespace
+
     static void set_yoga_border(YGNodeRef node, YGEdge edge, bool active) {
         YGNodeStyleSetBorder(node, edge, active ? 1.f : 0.f);
     }
@@ -68,11 +104,11 @@ namespace stain {
         BoxOptions::TitlePos pos,
         BoxOptions::TitleAlign align
     ) {
+        _box_opts.title_align = align;
         if(pos == BoxOptions::TitlePos::Bottom) {
             _box_opts.title_bottom = std::string(text);
         } else {
             _box_opts.title = std::string(text);
-            _box_opts.title_align = align;
         }
         request_render();
         return *this;
@@ -109,57 +145,39 @@ namespace stain {
                 sty.border_sides
             );
 
-            // Draw title on top border.
-            if(!_box_opts.title.empty() && sty.border_sides.top && w > 4) {
-                int max_title_len = w - 4;
-                std::string_view title_view = _box_opts.title;
-                if(static_cast<int>(title_view.size()) > max_title_len)
-                    title_view = title_view.substr(
-                        0,
-                        static_cast<std::size_t>(max_title_len)
-                    );
+            auto draw_title = [&](std::string_view title, int y_pos) {
+                int max_title_w = w - 4;
+                std::string_view title_view = title;
+                int title_dw = display_width(title_view);
+                if(title_dw > max_title_w) {
+                    title_view = truncate_by_width(title_view, max_title_w);
+                    title_dw = max_title_w;
+                }
 
                 int title_x = sx + 2;
                 if(_box_opts.title_align == BoxOptions::TitleAlign::Center)
-                    title_x =
-                        sx + (w - static_cast<int>(title_view.size())) / 2;
+                    title_x = sx + (w - title_dw) / 2;
                 else if(_box_opts.title_align == BoxOptions::TitleAlign::Right)
-                    title_x = sx + w - static_cast<int>(title_view.size()) - 2;
+                    title_x = sx + w - title_dw - 2;
 
                 buf.draw_text(
                     title_x,
-                    sy,
+                    y_pos,
                     title_view,
                     bc,
                     sty.background_color
                 );
+            };
+
+            // Draw title on top border.
+            if(!_box_opts.title.empty() && sty.border_sides.top && w > 4) {
+                draw_title(_box_opts.title, sy);
             }
 
             // Draw bottom title.
             if(!_box_opts.title_bottom.empty() && sty.border_sides.bottom &&
                w > 4) {
-                int max_title_len = w - 4;
-                std::string_view title_view = _box_opts.title_bottom;
-                if(static_cast<int>(title_view.size()) > max_title_len)
-                    title_view = title_view.substr(
-                        0,
-                        static_cast<std::size_t>(max_title_len)
-                    );
-
-                int title_x = sx + 2;
-                if(_box_opts.title_align == BoxOptions::TitleAlign::Center)
-                    title_x =
-                        sx + (w - static_cast<int>(title_view.size())) / 2;
-                else if(_box_opts.title_align == BoxOptions::TitleAlign::Right)
-                    title_x = sx + w - static_cast<int>(title_view.size()) - 2;
-
-                buf.draw_text(
-                    title_x,
-                    sy + h - 1,
-                    title_view,
-                    bc,
-                    sty.background_color
-                );
+                draw_title(_box_opts.title_bottom, sy + h - 1);
             }
         }
     }

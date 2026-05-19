@@ -3,12 +3,36 @@
 
 namespace stain {
 
+    FocusCycler::~FocusCycler() {
+        disable_auto_cycle();
+    }
+
     void FocusCycler::add(Renderable* r) {
         _focusable.push_back(r);
     }
 
+    void FocusCycler::remove(Renderable* r) {
+        auto it = std::find(_focusable.begin(), _focusable.end(), r);
+        if(it != _focusable.end())
+            _focusable.erase(it);
+    }
+
+    void FocusCycler::remove_dangling() {
+        _focusable.erase(
+            std::remove_if(
+                _focusable.begin(),
+                _focusable.end(),
+                [](Renderable* r) {
+                    return !r || r->is_destroyed();
+                }
+            ),
+            _focusable.end()
+        );
+    }
+
     bool FocusCycler::handle_key(KeyEvent& key) {
         if(key.name == "tab") {
+            remove_dangling();
             cycle(key.shift ? -1 : 1);
             key.stop_propagation();
             return true;
@@ -17,6 +41,7 @@ namespace stain {
     }
 
     void FocusCycler::focus_first() {
+        remove_dangling();
         if(!_focusable.empty())
             _focusable[0]->focus();
     }
@@ -30,9 +55,19 @@ namespace stain {
     }
 
     void FocusCycler::enable_auto_cycle(Renderer& renderer) {
-        renderer.on_key([this](KeyEvent& key) -> bool {
+        disable_auto_cycle();
+        _renderer = &renderer;
+        _key_conn_id = renderer.on_key([this](KeyEvent& key) -> bool {
             return handle_key(key);
         });
+    }
+
+    void FocusCycler::disable_auto_cycle() {
+        if(_renderer && _key_conn_id) {
+            _renderer->off_key(_key_conn_id);
+        }
+        _key_conn_id = 0;
+        _renderer = nullptr;
     }
 
     void FocusCycler::cycle(int dir) {

@@ -1,5 +1,7 @@
 #include "stain/text.hpp"
 
+#include <cassert>
+
 #ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
@@ -401,8 +403,10 @@ namespace stain {
         std::optional<int> index
     ) {
         auto* tn = dynamic_cast<TextNode*>(child.get());
-        if(!tn)
+        if(!tn) {
+            assert(false && "TextNode only accepts TextNode children");
             return -1;
+        }
         int idx = index.value_or(static_cast<int>(_text_children.size()));
         idx = std::clamp(idx, 0, static_cast<int>(_text_children.size()));
         _text_children.insert(

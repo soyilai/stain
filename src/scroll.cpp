@@ -209,14 +209,21 @@ namespace stain {
     }
     ScrollBox& ScrollBox::viewport_culling(bool v) {
         _scroll_opts.viewport_culling = v;
+        if(v)
+            apply_viewport_culling();
+        request_render();
         return *this;
     }
     ScrollBox& ScrollBox::sticky_scroll(bool v) {
         _scroll_opts.sticky_scroll = v;
+        request_render();
         return *this;
     }
     ScrollBox& ScrollBox::sticky_edge(std::optional<StickyEdge> e) {
         _scroll_opts.sticky_edge = e;
+        if(_scroll_opts.sticky_scroll && _scroll_opts.sticky_edge)
+            update_from_layout();
+        request_render();
         return *this;
     }
 

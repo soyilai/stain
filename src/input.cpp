@@ -37,6 +37,9 @@ namespace stain {
     int EditBuffer::length() const noexcept {
         return _storage->length();
     }
+    int EditBuffer::codepoint_count() const noexcept {
+        return _storage->codepoint_count();
+    }
     int EditBuffer::cursor_offset() const noexcept {
         return _cursor;
     }
@@ -339,10 +342,10 @@ namespace stain {
     }
 
     void EditBuffer::save_undo() {
+        if(_undo_stack.size() >= 100)
+            _undo_stack.pop_front();
         _undo_stack.push_back({_storage->text(), _cursor});
         _redo_stack.clear();
-        if(_undo_stack.size() > 100)
-            _undo_stack.pop_front();
     }
 
     Textarea::Textarea(RenderContext* ctx, TextareaOptions opts)
@@ -427,8 +430,6 @@ namespace stain {
             );
             return;
         }
-        adjust_h_scroll();
-        adjust_v_scroll();
         auto sel = _edit_buffer.selection();
         int sel_s = std::min(sel.first, sel.second);
         int sel_e = std::max(sel.first, sel.second);
@@ -580,6 +581,8 @@ namespace stain {
                 _edit_buffer.move_cursor_to(offset);
                 _edit_buffer.select(offset, offset);
                 _mouse_selecting = true;
+                adjust_h_scroll();
+                adjust_v_scroll();
                 request_render();
                 event.stop_propagation();
             }
@@ -591,6 +594,8 @@ namespace stain {
             if(offset >= 0) {
                 int anchor = _edit_buffer.selection().first;
                 _edit_buffer.select(anchor, offset);
+                adjust_h_scroll();
+                adjust_v_scroll();
                 request_render();
                 event.stop_propagation();
             }
@@ -691,11 +696,15 @@ namespace stain {
             } else {
                 return false;
             }
+            adjust_h_scroll();
+            adjust_v_scroll();
             request_render();
             return true;
         }
         if(!key.ctrl && !key.meta && !key.sequence.empty()) {
             _edit_buffer.insert_at_cursor(key.sequence);
+            adjust_h_scroll();
+            adjust_v_scroll();
             request_render();
             return true;
         } else if(
@@ -703,6 +712,8 @@ namespace stain {
             key.name[0] >= 32 && key.name[0] <= 126
         ) {
             _edit_buffer.insert_at_cursor(key.name);
+            adjust_h_scroll();
+            adjust_v_scroll();
             request_render();
             return true;
         }
@@ -711,6 +722,8 @@ namespace stain {
 
     void Textarea::handle_paste(PasteEvent& event) {
         _edit_buffer.insert_at_cursor(event.text);
+        adjust_h_scroll();
+        adjust_v_scroll();
         emit(events::Paste{event});
         request_render();
     }
@@ -729,9 +742,24 @@ namespace stain {
                 filtered += c;
         }
         if(_input_opts.max_length > 0) {
-            int remaining = _input_opts.max_length - edit_buffer().length();
-            if(static_cast<int>(filtered.size()) > remaining)
-                filtered.resize(std::max(0, remaining));
+            int remaining = _input_opts.max_length - edit_buffer().codepoint_count();
+            // Count codepoints in filtered text to truncate accurately.
+            int filtered_cps = 0;
+            std::size_t pos = 0;
+            while(pos < filtered.size()) {
+                decode_utf8(filtered, pos);
+                filtered_cps++;
+            }
+            if(filtered_cps > remaining) {
+                // Truncate to remaining codepoints.
+                int keep = 0;
+                std::size_t trunc_pos = 0;
+                while(keep < remaining && trunc_pos < filtered.size()) {
+                    decode_utf8(filtered, trunc_pos);
+                    keep++;
+                }
+                filtered.resize(trunc_pos);
+            }
         }
         event.text = std::move(filtered);
         Textarea::handle_paste(event);
@@ -782,13 +810,11 @@ namespace stain {
             auto v = value();
             if(_input_opts.on_enter)
                 _input_opts.on_enter(v);
-            if(_input_opts.on_submit)
-                _input_opts.on_submit(v);
             emit(events::InputEntered{v});
             return true;
         }
         if(_input_opts.max_length > 0 &&
-           edit_buffer().length() >= _input_opts.max_length &&
+           edit_buffer().codepoint_count() >= _input_opts.max_length &&
            !key.ctrl && !key.meta && !key.sequence.empty()) {
             return true;
         }
