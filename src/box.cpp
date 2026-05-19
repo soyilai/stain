@@ -25,7 +25,6 @@ namespace stain {
             std::size_t last_pos = 0;
             int w = 0;
             while(pos < s.size()) {
-                std::size_t cp_start = pos;
                 char32_t cp = decode_utf8(s, pos);
                 if(cp == U'\0')
                     break;
@@ -48,14 +47,26 @@ namespace stain {
         const auto& sty = _box_opts.style;
         bool has_border = sty.border_style != BorderStyle::None;
 
-        set_yoga_border(yoga_node(), YGEdgeTop,
-                        has_border && sty.border_sides.top);
-        set_yoga_border(yoga_node(), YGEdgeBottom,
-                        has_border && sty.border_sides.bottom);
-        set_yoga_border(yoga_node(), YGEdgeLeft,
-                        has_border && sty.border_sides.left);
-        set_yoga_border(yoga_node(), YGEdgeRight,
-                        has_border && sty.border_sides.right);
+        set_yoga_border(
+            yoga_node(),
+            YGEdgeTop,
+            has_border && sty.border_sides.top
+        );
+        set_yoga_border(
+            yoga_node(),
+            YGEdgeBottom,
+            has_border && sty.border_sides.bottom
+        );
+        set_yoga_border(
+            yoga_node(),
+            YGEdgeLeft,
+            has_border && sty.border_sides.left
+        );
+        set_yoga_border(
+            yoga_node(),
+            YGEdgeRight,
+            has_border && sty.border_sides.right
+        );
     }
 
     Box::Box(RenderContext* ctx, BoxOptions opts)
