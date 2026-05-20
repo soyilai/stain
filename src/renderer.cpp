@@ -63,7 +63,11 @@ namespace stain {
         std::string prev_key_raw;
         std::chrono::steady_clock::time_point prev_key_time;
 
-        static constexpr std::chrono::milliseconds key_repeat_threshold{250};
+        std::string first_key_raw;
+        std::chrono::steady_clock::time_point first_key_time;
+        bool in_repeat_sequence{false};
+
+        static constexpr std::chrono::milliseconds repeat_initial_threshold{350};
 
         struct PendingPlacement {
             int x, y;
@@ -795,24 +799,55 @@ namespace stain {
         if(consumed > 0) {
             event.raw = std::string(data, consumed);
 
-            // Detect key repeat: same raw bytes within the time threshold.
+            // Detect key repeat.
             // For Kitty protocol events with explicit type (:1/:2/:3), the
-            // parser already set the correct type, so only the `repeating`
-            // branch applies; the `else` override to Press is skipped.
-            if(event.type != KeyEventType::Release) {
+            // parser already set the correct type, so skip.
+            // For legacy events, use a two-phase approach:
+            //   1. First repeat detected by comparing against initial press
+            //      (OS initial delay ~200-500ms).
+            //   2. Subsequent fast repeats compared against previous event
+            //      (OS repeat rate ~30-80ms).
+            if(event.type == KeyEventType::Release) {
+                _impl->in_repeat_sequence = false;
+            } else {
                 auto now = std::chrono::steady_clock::now();
-                auto elapsed =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        now - _impl->prev_key_time
-                    );
-                bool repeating = elapsed < _impl->key_repeat_threshold &&
-                                 event.raw == _impl->prev_key_raw;
-                if(repeating) {
-                    event.repeated = true;
-                    event.type = KeyEventType::Repeat;
-                } else if(event.source != "kitty") {
+                if(event.source == "kitty") {
+                    // Kitty protocol events trust parser types.
+                } else if(event.raw == _impl->prev_key_raw && !_impl->prev_key_raw.empty()) {
+                    if(_impl->in_repeat_sequence) {
+                        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - _impl->prev_key_time
+                        );
+                        if(elapsed < std::chrono::milliseconds(100)) {
+                            event.repeated = true;
+                            event.type = KeyEventType::Repeat;
+                        } else {
+                            _impl->in_repeat_sequence = false;
+                            event.repeated = false;
+                            event.type = KeyEventType::Press;
+                        }
+                    } else {
+                        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - _impl->first_key_time
+                        );
+                        if(elapsed >= std::chrono::milliseconds(60) &&
+                           elapsed < _impl->repeat_initial_threshold) {
+                            event.repeated = true;
+                            event.type = KeyEventType::Repeat;
+                            _impl->in_repeat_sequence = true;
+                        } else {
+                            event.repeated = false;
+                            event.type = KeyEventType::Press;
+                            _impl->first_key_raw = event.raw;
+                            _impl->first_key_time = now;
+                        }
+                    }
+                } else {
                     event.repeated = false;
                     event.type = KeyEventType::Press;
+                    _impl->first_key_raw = event.raw;
+                    _impl->first_key_time = now;
+                    _impl->in_repeat_sequence = false;
                 }
 
                 _impl->prev_key_raw = event.raw;
